@@ -282,9 +282,9 @@ class YatNMN(nn.Module):
             
             # Optimization: if weights are normalized, ||W||² = 1 for each neuron
             if self.weight_normalized:
-                kernel_squared_sum = torch.ones_like(kernel[:, 0:1])
+                kernel_squared_sum = torch.ones(kernel.shape[0], device=kernel.device, dtype=kernel.dtype)
             else:
-                kernel_squared_sum = torch.sum(kernel**2, dim=-1, keepdim=True)
+                kernel_squared_sum = torch.sum(kernel**2, dim=-1)
             
             # Reuse dot product for distance: ||x||² + ||W||² - 2(x·W)
             dot_for_dist = y - bias if bias is not None else y

@@ -56,8 +56,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module='datasets.builder
 # ---------- YAT convolution imports ----------
 # Ensure you have the nmn-pytorch library installed: pip install nmn-pytorch
 try:
-    from nmn.torch.conv import YatConv2d
-    from nmn.torch.nmn import YatNMN
+    from nmn.torch import YatConv2d
+    from nmn.torch import YatNMN
 except ImportError:
     print("Please install nmn-pytorch: pip install nmn-pytorch")
     exit()
@@ -79,7 +79,7 @@ class HuggingFaceDataset(torch.utils.data.IterableDataset):
             # Common column names for image and label in HF datasets
             image_key = 'image' if 'image' in sample else 'img'
             label_key = 'label' if 'label' in sample else 'labels'
-            
+
             if image_key not in sample or label_key not in sample:
                 raise KeyError(f"Dataset sample missing required key. Found: {list(sample.keys())}")
 
@@ -88,15 +88,15 @@ class HuggingFaceDataset(torch.utils.data.IterableDataset):
                  img = img_data.convert("RGB")
             else:
                  img = img_data
-            
+
             if self.transform:
                 img = self.transform(img)
-            
+
             yield img, sample[label_key]
 
 def get_data_loaders(dataset_name, hf_dataset, batch_size, image_size, data_dir='./data'):
     """Creates train and validation data loaders for specified dataset."""
-    
+
     # Define more powerful data augmentations
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(image_size),
@@ -106,7 +106,7 @@ def get_data_loaders(dataset_name, hf_dataset, batch_size, image_size, data_dir=
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)), # ImageNet stats as a general default
         transforms.RandomErasing(p=0.1, scale=(0.02, 0.2)),
     ])
-    
+
     val_transform = transforms.Compose([
         transforms.Resize(image_size + 32), # Resize to a slightly larger size
         transforms.CenterCrop(image_size),
@@ -138,7 +138,7 @@ def get_data_loaders(dataset_name, hf_dataset, batch_size, image_size, data_dir=
             norm_mean, norm_std = (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
         else: # CIFAR100
             norm_mean, norm_std = (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
-        
+
         train_transform = transforms.Compose([
             transforms.RandomCrop(image_size, padding=4),
             transforms.RandomHorizontalFlip(),
@@ -152,7 +152,7 @@ def get_data_loaders(dataset_name, hf_dataset, batch_size, image_size, data_dir=
             transforms.ToTensor(),
             transforms.Normalize(norm_mean, norm_std),
         ])
-    
+
     if dataset_name == 'CIFAR10':
         train_dataset = torchvision_datasets.CIFAR10(root=data_dir, train=True, download=True, transform=train_transform)
         val_dataset = torchvision_datasets.CIFAR10(root=data_dir, train=False, download=True, transform=val_transform)
@@ -203,7 +203,7 @@ class BasicStandardBlock(nn.Module):
 
 class BasicYATBlock(nn.Module):
     """A basic residual block for the YATConvNet, inspired by ResNet.
-    
+
     Supports weight normalization, weight tying, and constant alpha for efficient training.
     """
     expansion = 1
@@ -274,7 +274,7 @@ class StandardConvNet(nn.Module):
 
 class YATConvNet(nn.Module):
     """A YAT-based CNN with a ResNet-like architecture.
-    
+
     Supports weight normalization, weight tying for efficient parameter sharing,
     and constant alpha scaling.
     """
@@ -297,13 +297,12 @@ class YATConvNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
         self.proj = nn.Linear(512 * block.expansion, 256, bias=False)
-        
+
         # YatNMN head with optional weight tying
         self.fc_yat = YatNMN(
             256, num_classes,
             epsilon=0.007,
             bias=False,
-            use_alpha=use_alpha,
             constant_alpha=constant_alpha,
             weight_normalized=weight_normalized,
             tie_kernel_bank=tie_output_bank,
@@ -399,7 +398,7 @@ def train_epoch(model, trainloader, optimizer, criterion, device, use_wandb, glo
                     'train/batch_acc': batch_acc,
                 }, step=global_step)
             running_loss = 0.0
-        
+
         global_step += 1
 
     epoch_loss = running_loss / len(trainloader) if len(trainloader) > 0 else 0.0
@@ -464,7 +463,7 @@ def main():
     parser.add_argument('--wandb-entity', type=str, default=None, help='W&B entity (username or team)')
 
     args = parser.parse_args()
-    
+
     if args.hf_dataset and args.dataset != 'CIFAR10':
         print(f"Warning: --hf-dataset ('{args.hf_dataset}') is provided, ignoring --dataset ('{args.dataset}').")
         args.dataset = None
@@ -581,7 +580,7 @@ def main():
         model_to_load.load_state_dict(state_dict)
 
         _, _, all_preds, all_targets = validate(model, val_loader, criterion, device)
-        
+
         # Get class names for confusion matrix
         if hasattr(train_loader.dataset, 'classes'):
             class_names = train_loader.dataset.classes
