@@ -175,8 +175,7 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 from nmn.nnx.nmn import YatNMN
-from nmn.nnx.yatconv import YatConv
-from nmn.nnx.yatconv_transpose import YatConvTranspose
+from nmn.nnx.conv import YatConv, YatConvTranspose
 
 # ═══════════════════════════════════════════════════════════════
 # Dense Layer
@@ -356,7 +355,7 @@ Using Flax NNX for a transformer architecture:
 ```python
 from flax import nnx
 import jax.numpy as jnp
-from nmn.nnx.yatattention import MultiHeadAttention
+from nmn.nnx.attention import MultiHeadAttention
 from nmn.nnx.nmn import YatNMN
 
 class YatTransformerBlock(nnx.Module):
@@ -552,7 +551,7 @@ Yat-based attention mechanism:
 
 ```python
 from flax import nnx
-from nmn.nnx.yatattention import MultiHeadAttention
+from nmn.nnx.attention import MultiHeadAttention
 import jax.numpy as jnp
 
 # ═══════════════════════════════════════════════════════════════
@@ -586,57 +585,131 @@ context = jnp.zeros((2, 100, 512))  # Source sequence
 output = cross_attn(queries, context)  # (2, 50, 512)
 ```
 
+### Advanced Attention Mechanisms
+
+**Rotary YAT Attention** — Combines RoPE with YAT attention for position-aware transformers:
+
+```python
+from nmn.nnx.attention import RotaryYatAttention
+import jax.numpy as jnp
+from flax import nnx
+
+# Create Rotary YAT Attention layer
+rotary_attn = RotaryYatAttention(
+    embed_dim=512,
+    num_heads=8,
+    max_seq_len=2048,      # Maximum sequence length
+    use_yat=True,          # Use YAT formula (set False for standard attention)
+    constant_alpha=True,   # Use constant alpha scaling
+    rngs=nnx.Rngs(0)
+)
+
+# Process sequence (positions are automatically handled)
+x = jnp.zeros((2, 100, 512))  # (batch, seq_len, embed_dim)
+output = rotary_attn(x)  # (2, 100, 512)
+```
+
+**Performer Attention** — O(n) linear complexity using FAVOR+ approximation:
+
+```python
+from nmn.nnx.attention import RotaryYatAttention
+
+# Enable Performer mode for long sequences
+performer_attn = RotaryYatAttention(
+    embed_dim=512,
+    num_heads=8,
+    use_performer=True,    # Enable linear complexity
+    num_features=256,      # Number of random features
+    use_yat=True,          # Combine Performer with YAT
+    rngs=nnx.Rngs(0)
+)
+
+# Efficient attention for long sequences
+long_sequence = jnp.zeros((2, 10000, 512))  # 10K tokens
+output = performer_attn(long_sequence)  # Still runs in O(n) time
+```
+
+### RNN Wrappers
+
+**RNN Wrapper** — Process sequences with any RNN cell:
+
+```python
+from nmn.nnx.rnn import YatLSTMCell, RNN, Bidirectional
+from flax import nnx
+import jax.numpy as jnp
+
+# Create cell
+cell = YatLSTMCell(hidden_dim=256, rngs=nnx.Rngs(0))
+
+# Wrap in RNN for automatic sequence processing
+rnn = RNN(cell, return_sequences=True)  # Returns all timesteps
+
+# Process batch of sequences
+sequences = jnp.zeros((16, 50, 128))  # (batch, time, features)
+outputs, final_state = rnn(sequences)
+# outputs: (16, 50, 256) — all hidden states
+# final_state: tuple of (cell_state, hidden_state)
+
+# Return only final output
+rnn_final = RNN(cell, return_sequences=False)
+final_output, final_state = rnn_final(sequences)
+# final_output: (16, 256) — only last hidden state
+```
+
+**Bidirectional RNN** — Process sequences in both directions:
+
+```python
+from nmn.nnx.rnn import Bidirectional, YatGRUCell
+
+# Create bidirectional cell
+gru_cell = YatGRUCell(hidden_dim=256, rngs=nnx.Rngs(0))
+bi_rnn = Bidirectional(gru_cell)
+
+# Processes sequences forward and backward, concatenates results
+sequences = jnp.zeros((16, 50, 128))
+bi_output = bi_rnn(sequences)
+# Output shape: (16, 50, 512) — 256*2 from both directions
+```
+
 ---
 
 ## Runnable Scripts
 
-The `examples/` directory contains complete, runnable training scripts:
+The repository contains complete, runnable training examples:
 
 ```
-examples/
-├── torch/
-│   ├── yat_examples.py          # Basic usage patterns
+src/nmn/
+├── torch/examples/
+│   ├── yat_examples.py          # Basic PyTorch usage patterns
 │   ├── yat_cifar10.py           # CIFAR-10 image classification
 │   └── vision/
-│       └── resnet_training.py   # ResNet with Yat layers
+│       └── resnet_training.py   # ResNet architectures comparison
 │
-├── keras/
-│   ├── basic_usage.py           # Getting started
-│   ├── vision_cifar10.py        # CIFAR-10 training
-│   └── language_imdb.py         # IMDB sentiment analysis
-│
-├── tensorflow/
-│   ├── basic_usage.py           # Getting started
-│   ├── vision_cifar10.py        # CIFAR-10 training
-│   └── language_imdb.py         # IMDB sentiment analysis
-│
-├── nnx/
-│   └── vision/
-│       └── cnn_cifar.py         # JAX CNN with data augmentation
+├── nnx/examples/
+│   ├── vision/
+│   │   └── aether_resnet50_tpu.py   # ResNet50 training on TPU/GPU
 │   └── language/
-│       └── mingpt.py            # GPT-style language model
-│
-├── linen/
-│   └── basic_usage.py           # Flax Linen basics
-│
-└── comparative/
-    └── framework_comparison.py  # Side-by-side comparison
+│       ├── m3za.py                  # MiniBERT pre-training (MLM + SimCSE)
+│       └── m3za_perf.py             # Performance benchmarking
 ```
 
 ### Running Examples
 
 ```bash
-# PyTorch CIFAR-10
-python examples/torch/yat_cifar10.py
+# PyTorch Examples
+cd /workspaces/nmn
+python src/nmn/torch/examples/yat_cifar10.py        # CIFAR-10 classification
+python src/nmn/torch/examples/yat_examples.py       # Various architectures
+python src/nmn/torch/examples/vision/resnet_training.py  # ResNet comparison
 
-# Keras sentiment analysis
-python examples/keras/language_imdb.py
-
-# JAX/Flax GPT
-python examples/nnx/language/mingpt.py
-
-# Framework comparison
-python examples/comparative/framework_comparison.py
+# Flax NNX Examples  
+python src/nmn/nnx/examples/vision/aether_resnet50_tpu.py \
+    --model resnet50 \
+    --batch-size 1024 \
+    --epochs 200
+    
+python src/nmn/nnx/examples/language/m3za.py        # MiniBERT training
+python src/nmn/nnx/examples/language/m3za_perf.py   # Benchmark
 ```
 
 ---
@@ -685,16 +758,18 @@ from nmn.tf.conv import YatConvTranspose1D, YatConvTranspose2D, YatConvTranspose
 from nmn.nnx.nmn import YatNMN
 
 # Convolutions
-from nmn.nnx.yatconv import YatConv
+from nmn.nnx.conv import YatConv
 
 # Transposed Convolutions
-from nmn.nnx.yatconv_transpose import YatConvTranspose
+from nmn.nnx.conv import YatConvTranspose
 
-# Attention
-from nmn.nnx.yatattention import MultiHeadAttention
+# Attention Mechanisms
+from nmn.nnx.attention import MultiHeadAttention, RotaryYatAttention
+from nmn.nnx.attention import yat_attention, rotary_yat_attention
 
 # RNN Cells
 from nmn.nnx.rnn import YatSimpleCell, YatLSTMCell, YatGRUCell
+from nmn.nnx.rnn import RNN, Bidirectional
 
 # Custom Squashing Functions
 from nmn.nnx.squashers import softermax, softer_sigmoid, soft_tanh

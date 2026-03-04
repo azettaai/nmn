@@ -137,6 +137,82 @@ class NMNBlock(nnx.Module):
         return self.layer(x)   # That's it!
 ```
 
+## Advanced Features
+
+### Attention Mechanisms
+
+```python
+from nmn.nnx.attention import RotaryYatAttention, MultiHeadAttention
+
+# Multi-head attention
+mha = MultiHeadAttention(
+    num_heads=8,
+    in_features=512,
+    rngs=nnx.Rngs(0)
+)
+
+# Rotary position embeddings + YAT
+rotary_attn = RotaryYatAttention(
+    embed_dim=512,
+    num_heads=8,
+    max_seq_len=2048,
+    rngs=nnx.Rngs(0)
+)
+
+# Performer mode for long sequences (O(n) complexity)
+performer = RotaryYatAttention(
+    embed_dim=512,
+    num_heads=8,
+    use_performer=True,
+    num_features=256,
+    rngs=nnx.Rngs(0)
+)
+```
+
+### Recurrent Layers
+
+```python
+from nmn.nnx.rnn import YatLSTMCell, YatGRUCell, RNN, Bidirectional
+
+# LSTM with Yat operations
+lstm_cell = YatLSTMCell(hidden_dim=256, rngs=nnx.Rngs(0))
+lstm = RNN(lstm_cell, return_sequences=True)
+
+# Bidirectional processing
+bi_gru = Bidirectional(YatGRUCell(hidden_dim=256, rngs=nnx.Rngs(0)))
+```
+
+### Regularization
+
+```python
+from nmn.nnx.conv import YatConv
+
+# DropConnect: weight-level dropout
+conv = YatConv(
+    in_features=3,
+    out_features=32,
+    kernel_size=(3, 3),
+    use_dropconnect=True,
+    drop_rate=0.1,
+    rngs=nnx.Rngs(0)
+)
+
+# Training vs inference
+train_output = conv(x, deterministic=False)  # DropConnect active
+eval_output = conv(x, deterministic=True)    # DropConnect disabled
+```
+
+### Custom Squashing Functions
+
+```python
+from nmn.nnx.squashers import softermax, softer_sigmoid, soft_tanh
+
+# Smoother alternatives to standard activations
+probs = softermax(logits, n=2)              # Smooth softmax
+activated = softer_sigmoid(x, sharpness=1)  # Smooth sigmoid
+output = soft_tanh(x)                       # Smooth tanh
+```
+
 ## Next Steps
 
 - [YatNMN API Reference](/docs/layers/yat-nmn)

@@ -218,14 +218,16 @@ y = layer(x)  # (32, 64)
 
 | Layer | Status | Description |
 |-------|:------:|-------------|
-| **MultiHeadAttention** | ✅ | Yat-based attention mechanism |
+| **MultiHeadAttention** | ✅ | Multi-head attention with YAT formula |
+| **RotaryYatAttention** | ✅ | YAT + Rotary Position Embeddings (RoPE) |
+| **Performer Attention** | ✅ | YAT + FAVOR+ random features (O(n) complexity) |
 | **YatSimpleCell** | ✅ | Simple RNN cell |
 | **YatLSTMCell** | ✅ | LSTM with Yat operations |
 | **YatGRUCell** | ✅ | GRU with Yat operations |
 | **softermax** | ✅ | Generalized softmax: $\frac{x_k^n}{\epsilon + \sum_i x_i^n}$ |
 | **softer_sigmoid** | ✅ | Smooth sigmoid variant |
 | **soft_tanh** | ✅ | Smooth tanh variant |
-| **DropConnect** | ✅ | Weight-level dropout regularization |
+| **DropConnect** | ✅ | Weight-level dropout (Conv & Dense layers) |
 
 ---
 
@@ -252,7 +254,133 @@ This demonstrates the **robustness of the geometric YAT formulation** across dif
 
 ---
 
-## 📚 Examples
+## 🎯 Framework Completeness
+
+### Layer Support Legend
+
+- ✅ **Production Ready** - Fully implemented and tested
+- ❌ **Not Implemented** - Not available in this framework
+- ⚠️ **Limited** - Partial support
+
+### PyTorch Coverage
+
+PyTorch includes all core layers plus attention mechanisms:
+- Dense (YatNMN)
+- Conv1d/2d/3d and ConvTranspose variants
+- Multi-head Attention
+- DropConnect support
+
+### Keras/TensorFlow Coverage
+
+Both frameworks have identical layer support:
+- Dense (YatNMN)
+- Conv1d/2d/3d and ConvTranspose1d/2d (no 3D transpose)
+- No attention or RNN layers (use NNX for advanced features)
+
+### Flax NNX — Most Complete
+
+Full suite including:
+- All core layers (Dense, Conv, ConvTranspose)
+- **Advanced attention**: MultiHeadAttention, RotaryYatAttention, Performer
+- **RNN cells**: SimpleCell, LSTMCell, GRUCell + RNN wrapper
+- **Activation alternatives**: softermax, softer_sigmoid, soft_tanh
+- **Regularization**: DropConnect on Conv and Dense layers
+
+### Flax Linen
+
+Basic convolutional support only:
+- Dense (YatNMN)
+- Conv1d/2d/3d only (no transposed convolutions)
+- For advanced features, use NNX instead
+
+---
+
+## ⚙️ Advanced Features (Flax NNX)
+
+### Attention Mechanisms
+
+**MultiHeadAttention** — Standard multi-head attention with YAT formula
+```python
+from nmn.nnx.attention import MultiHeadAttention
+from flax import nnx
+
+attn = MultiHeadAttention(num_heads=8, in_features=512, rngs=nnx.Rngs(0))
+output = attn(query, key, value)
+```
+
+**RotaryYatAttention** — Combines Rotary Position Embeddings (RoPE) with YAT
+```python
+from nmn.nnx.attention import RotaryYatAttention
+
+attn = RotaryYatAttention(embed_dim=512, num_heads=8, rngs=nnx.Rngs(0))
+output = attn(x)  # Self-attention with positional awareness
+```
+
+**Performer Mode** — O(n) linear complexity using FAVOR+ approximation
+```python
+attn = RotaryYatAttention(
+    embed_dim=512, 
+    num_heads=8,
+    use_performer=True,      # Enable FAVOR+ approximation
+    num_features=256,        # Performer feature count
+    rngs=nnx.Rngs(0)
+)
+```
+
+### Recurrent Layers
+
+**RNN Cell Options**: YatSimpleCell, YatLSTMCell, YatGRUCell
+
+```python
+from nmn.nnx.rnn import YatLSTMCell, RNN, Bidirectional
+
+# Create LSTM cell
+cell = YatLSTMCell(hidden_dim=256, rngs=nnx.Rngs(0))
+
+# Wrap in RNN for sequence processing
+rnn = RNN(cell, return_sequences=True)
+output, final_state = rnn(inputs)
+
+# Bidirectional processing
+bi_rnn = Bidirectional(YatLSTMCell(hidden_dim=256, rngs=nnx.Rngs(0)))
+output = bi_rnn(inputs)
+```
+
+### Squashing Functions
+
+Alternatives to standard activation functions:
+
+```python
+from nmn.nnx.squashers import softermax, softer_sigmoid, soft_tanh
+
+y1 = softermax(x, n=2)              # Smoother softmax with power n
+y2 = softer_sigmoid(x, sharpness=1) # Smooth sigmoid variant
+y3 = soft_tanh(x)                   # Smooth tanh variant
+```
+
+### DropConnect Regularization
+
+Weight-level dropout:
+
+```python
+from nmn.nnx.conv import YatConv
+
+conv = YatConv(
+    in_channels=3,
+    out_channels=32,
+    kernel_size=(3, 3),
+    use_dropconnect=True,  # Enable DropConnect
+    drop_rate=0.1,         # 10% dropout rate
+    rngs=nnx.Rngs(0)
+)
+
+# Training: DropConnect active
+output = conv(x, deterministic=False)
+# Inference: DropConnect disabled
+output = conv(x, deterministic=True)
+```
+
+---
 
 See **[EXAMPLES.md](EXAMPLES.md)** for comprehensive usage guides including:
 - Framework-specific quick starts (PyTorch, Keras, TensorFlow, Flax)
@@ -262,9 +390,14 @@ See **[EXAMPLES.md](EXAMPLES.md)** for comprehensive usage guides including:
 **Quick run:**
 
 ```bash
-python examples/torch/yat_cifar10.py      # PyTorch CIFAR-10
-python examples/keras/language_imdb.py    # Keras sentiment
-python examples/nnx/language/mingpt.py    # JAX GPT
+# PyTorch Examples
+python src/nmn/torch/examples/yat_cifar10.py      # CIFAR-10 classification
+python src/nmn/torch/examples/yat_examples.py     # Various architectures
+
+# Flax NNX Examples  
+python src/nmn/nnx/examples/vision/aether_resnet50_tpu.py  # ResNet50 on TPU
+python src/nmn/nnx/examples/language/m3za.py              # MiniBERT pre-training
+python src/nmn/nnx/examples/language/m3za_perf.py         # Performance evaluation
 ```
 
 ---
