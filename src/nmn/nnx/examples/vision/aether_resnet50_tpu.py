@@ -33,7 +33,35 @@ import numpy as np
 from nmn.nnx.conv import YatConv
 from nmn.nnx.nmn import YatNMN
 
+# Training Monitor
+try:
+    from tpu_monitor import TrainingMonitor
+    MONITOR_AVAILABLE = True
+except ImportError:
+    try:
+        import importlib.util, pathlib
+        _mon_path = str(pathlib.Path(__file__).parent / 'tpu_monitor.py')
+        _spec = importlib.util.spec_from_file_location('tpu_monitor', _mon_path)
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        TrainingMonitor = _mod.TrainingMonitor
+        MONITOR_AVAILABLE = True
+    except Exception:
+        MONITOR_AVAILABLE = False
+
 warnings.filterwarnings('ignore', category=UserWarning)
+
+
+def _is_notebook_frontend() -> bool:
+    """Return True when running inside an interactive notebook frontend."""
+    try:
+        from IPython import get_ipython
+        ip = get_ipython()
+        if ip is None:
+            return False
+        return ip.__class__.__name__ == 'ZMQInteractiveShell'
+    except Exception:
+        return False
 
 # -----------------------------------------------------------------------------
 # 1. Neural Network Blocks (NNX)
@@ -325,51 +353,71 @@ else:
         labels_np = labels.numpy()
         return images_np, labels_np
 
-def create_grain_dataloader(split, batch_size, is_train=True, cache_dir=None, num_epochs=None):
+def create_grain_dataloader(split, batch_size, is_train=True, cache_dir=None, num_epochs=None, num_devices=1):
     """Create Grain DataLoader with proper prefetching."""
     if not GRAIN_AVAILABLE:
-        raise RuntimeError("Grain is not available. Install with: pip install grain")
+        raise RuntimeError("FATAL: Grain is required but not available. Install with: pip install grain")
     
-    # Create data source
-    data_source = HFDataSource(split=split, cache_dir=cache_dir)
-    
-    # Create sampler
-    if is_train:
-        sampler = grain.IndexSampler(
-            len(data_source),
-            shuffle=True,
-            seed=42,
-            num_epochs=num_epochs,
-            shard_options=grain.ShardByJaxProcess(drop_remainder=True),
+    try:
+        # Create data source
+        data_source = HFDataSource(split=split, cache_dir=cache_dir)
+        total_samples = len(data_source)
+        
+        # Create sampler - CRITICAL: num_epochs=1 means one pass per dataloader creation
+        if is_train:
+            sampler = grain.IndexSampler(
+                total_samples,
+                shuffle=True,
+                seed=42 + (hash(split) % 1000 if split != 'train' else 0),
+                num_epochs=1,  # One pass per dataloader instance
+                shard_options=grain.ShardByJaxProcess(drop_remainder=True),
+            )
+        else:
+            sampler = grain.IndexSampler(
+                total_samples,
+                shuffle=False,
+                num_epochs=1,  # One validation pass
+                shard_options=grain.ShardByJaxProcess(drop_remainder=True),
+            )
+        
+        # Create transformations (including batching)
+        transformations = [
+            PreprocessOp(is_train=is_train),
+            grain.Batch(batch_size=batch_size, drop_remainder=True),
+        ]
+        
+        # Create DataLoader
+        loader = grain.DataLoader(
+            data_source=data_source,
+            sampler=sampler,
+            operations=transformations,
+            worker_count=0,  # Use 0 for TPU to avoid multiprocessing overhead
+            worker_buffer_size=2,
+            read_options=grain.ReadOptions(
+                num_threads=1,
+                prefetch_buffer_size=2,
+            ),
         )
-    else:
-        sampler = grain.IndexSampler(
-            len(data_source),
-            shuffle=False,
-            num_epochs=1,
-            shard_options=grain.ShardByJaxProcess(drop_remainder=True),
+        
+        # Debug info
+        # `batch_size` is per JAX process for Grain. On single-host TPU this equals
+        # global batch size, so expected batches should be ~ total_samples // batch_size.
+        num_jax_processes = jax.process_count()
+        samples_per_process = total_samples // num_jax_processes
+        expected_batches = samples_per_process // batch_size
+        print(
+            f"[DEBUG] Created Grain loader for {split}: {total_samples:,} samples, "
+            f"batch_size={batch_size}, jax_processes={num_jax_processes}, "
+            f"expected_batches≈{expected_batches}"
         )
-    
-    # Create transformations
-    transformations = [PreprocessOp(is_train=is_train)]
-    
-    # Create DataLoader
-    loader = grain.DataLoader(
-        data_source=data_source,
-        sampler=sampler,
-        operations=transformations,
-        worker_count=0,  # Use 0 for TPU to avoid multiprocessing overhead
-        worker_buffer_size=2,
-        read_options=grain.ReadOptions(
-            num_threads=1,
-            prefetch_buffer_size=batch_size * 2,
-        ),
-    )
-    
-    # Batch iterator
-    batch_iter = loader.batch(batch_size=batch_size, drop_remainder=True)
-    
-    return batch_iter
+        
+        return loader
+    except Exception as e:
+        print(f"\n" + "!"*80)
+        print(f"FATAL: Failed to create Grain dataloader for split={split}")
+        print(f"Error: {e}")
+        print(f"!"*80)
+        raise
 
 # -----------------------------------------------------------------------------
 # 3. Training Step (NNX + Mesh)
@@ -399,7 +447,96 @@ def val_step(model, batch_images, batch_labels):
     return loss, acc
 
 # -----------------------------------------------------------------------------
-# 4. Model Initialization Helper
+# 4. Model Analysis Helper
+# -----------------------------------------------------------------------------
+
+def analyze_model(model):
+    """Analyze and log model statistics: total parameters, neuron types, and counts."""
+    total_params = 0
+    linear_neurons = 0
+    yat_neurons = 0
+    linear_params = 0
+    yat_params = 0
+    
+    def traverse_module(module, prefix=''):
+        nonlocal total_params, linear_neurons, yat_neurons, linear_params, yat_params
+        
+        # Check if this is a Linear layer
+        if isinstance(module, nnx.Linear):
+            out_features = module.out_features
+            in_features = module.in_features
+            params = in_features * out_features
+            if module.bias is not None and hasattr(module, 'bias'):
+                params += out_features
+            linear_neurons += out_features
+            linear_params += params
+            total_params += params
+        
+        # Check if this is a YatNMN layer
+        elif isinstance(module, YatNMN):
+            out_features = module.out_features
+            in_features = module.in_features
+            # YatNMN typically has similar parameter structure to Linear
+            params = in_features * out_features
+            if hasattr(module, 'bias') and module.bias is not None:
+                params += out_features
+            yat_neurons += out_features
+            yat_params += params
+            total_params += params
+        
+        # Check if this is a Conv layer
+        elif isinstance(module, (nnx.Conv, YatConv)):
+            # Count conv parameters
+            if hasattr(module, 'kernel'):
+                try:
+                    kernel_shape = module.kernel.shape
+                    kernel_params = int(jnp.prod(jnp.array(kernel_shape)))
+                except (AttributeError, TypeError):
+                    kernel_params = 0
+            else:
+                kernel_params = 0
+            
+            bias_params = 0
+            if hasattr(module, 'bias') and module.bias is not None:
+                bias_params = module.out_channels if hasattr(module, 'out_channels') else 0
+            
+            conv_params = kernel_params + bias_params
+            total_params += conv_params
+            
+            if isinstance(module, YatConv):
+                yat_params += conv_params
+            else:
+                linear_params += conv_params
+        
+        # Recursively traverse child modules
+        if hasattr(module, '__dict__'):
+            for name, child in module.__dict__.items():
+                if isinstance(child, nnx.Module):
+                    traverse_module(child, prefix + f"{name}.")
+                elif isinstance(child, nnx.List):
+                    for i, item in enumerate(child):
+                        if isinstance(item, nnx.Module):
+                            traverse_module(item, prefix + f"{name}[{i}].")
+    
+    traverse_module(model)
+    
+    # Log statistics
+    print("\n" + "="*80)
+    print("MODEL STATISTICS")
+    print("="*80)
+    print(f"Total Parameters: {total_params:,}")
+    print(f"\nNeuron Types:")
+    print(f"  Linear Neurons: {linear_neurons:,}")
+    print(f"  YAT Neurons: {yat_neurons:,}")
+    print(f"  Total Neurons: {linear_neurons + yat_neurons:,}")
+    print(f"\nParameter Distribution:")
+    print(f"  Linear Parameters: {linear_params:,}")
+    print(f"  YAT Parameters: {yat_params:,}")
+    print(f"  Total (check): {linear_params + yat_params:,}")
+    print("="*80 + "\n")
+
+# -----------------------------------------------------------------------------
+# 5. Model Initialization Helper
 # -----------------------------------------------------------------------------
 
 @nnx.jit(static_argnames=('block_cls', 'layers', 'num_classes', 'dtype', 'lr', 'epochs',
@@ -467,6 +604,12 @@ def main():
     parser.add_argument('--wandb-project', type=str, default="imagenet-flax", help='WandB project name')
     parser.add_argument('--wandb-entity', type=str, default="irf-sic", help='WandB entity/username')
     parser.add_argument('--wandb-name', type=str, default=None, help='WandB run name')
+    parser.add_argument('--wandb-log-freq', type=int, default=50, help='Log to WandB every N iterations')
+    
+    # Monitor options
+    parser.add_argument('--monitor', action='store_true', default=True, help='Enable Jupyter training monitor')
+    parser.add_argument('--no-monitor', dest='monitor', action='store_false', help='Disable Jupyter training monitor')
+    parser.add_argument('--monitor-freq', type=int, default=10, help='Update monitor every N iterations')
     
     parser.add_argument('-f', '--file', type=str, default='', help='Jupyter kernel file (ignored)')
 
@@ -552,50 +695,53 @@ def main():
     # jax.debug.visualize_array_sharding(state['model']['conv1']['kernel'].value) 
 
     print(f"Model {args.model} initialized and sharded.")
+    
+    # Analyze and log model statistics
+    analyze_model(model)
 
     # -------------------------------------------------------------------------
     # DATA
     # -------------------------------------------------------------------------
-    if args.batch_size % num_devices != 0:
-        raise ValueError(f"Batch size {args.batch_size} must be divisible by device count {num_devices}")
+    # Divide batch size by number of devices since Grain's ShardByJaxProcess
+    # will give each process a full batch. Sharding within a device mesh
+    # happens at the jax.device_put level.
     
     per_device_batch = args.batch_size // num_devices
+    num_jax_processes = jax.process_count()
+    print(f"Per-device batch size: {per_device_batch} (global: {args.batch_size} / devices: {num_devices})")
+    print(f"JAX processes: {num_jax_processes}")
+    
+    # On single-host TPU (1 JAX process, N devices): ShardByJaxProcess does NOT shard.
+    # We must use global batch size for Grain so we get the right iteration count.
+    # jax.device_put with NamedSharding handles splitting across devices.
+    # On multi-host TPU pods: ShardByJaxProcess shards across hosts, so use per-host batch.
+    grain_batch_size = args.batch_size // num_jax_processes
+    print(f"Grain batch size: {grain_batch_size} (global: {args.batch_size} / jax_processes: {num_jax_processes})")
     
     if GRAIN_AVAILABLE:
         print("Using Grain DataLoader (optimized for TPU)")
-        train_loader = create_grain_dataloader(
-            split='train',
-            batch_size=per_device_batch,
-            is_train=True,
-            cache_dir=args.cache_dir,
-            num_epochs=args.epochs,
-        )
-        val_loader = create_grain_dataloader(
-            split='validation',
-            batch_size=per_device_batch,
-            is_train=False,
-            cache_dir=args.cache_dir,
-            num_epochs=None,
-        )
     else:
-        print("WARNING: Grain not available, falling back to PyTorch DataLoader (slower on TPU)")
-        print(f"Install Grain with: pip install grain")
+        print("\n" + "!"*80)
+        print("WARNING: Grain not available!")
+        print("Grain is REQUIRED for TPU training. Install with: pip install grain")
+        print("Falling back to PyTorch DataLoader (significantly slower on TPU)")
+        print("!"*80 + "\n")
+        
+        # Setup PyTorch DataLoader fallback with in-memory option
         if args.streaming:
             print("Using Streaming Dataset")
             train_dataset = ImageNetStreamDataset(split='train', transform=get_transforms(True))
             val_dataset = ImageNetStreamDataset(split='validation', transform=get_transforms(False))
         else:
-            print(f"Using Map-Style Dataset (Cache: {args.cache_dir})")
+            print(f"Using Map-Style Dataset")
+            if args.in_memory:
+                print(f"  → Caching dataset in memory (keep_in_memory=True)")
+            if args.cache_dir:
+                print(f"  → Cache directory: {args.cache_dir}")
             train_dataset = ImageNetMapDataset(split='train', transform=get_transforms(True), 
                                                cache_dir=args.cache_dir, keep_in_memory=args.in_memory)
             val_dataset = ImageNetMapDataset(split='validation', transform=get_transforms(False), 
                                              cache_dir=args.cache_dir, keep_in_memory=args.in_memory)
-        
-        train_shuffle = not args.streaming
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=0, 
-                                  drop_last=True, shuffle=train_shuffle)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=0, 
-                                drop_last=True, shuffle=False)
 
     # -------------------------------------------------------------------------
     # TRAINING LOOP
@@ -607,24 +753,119 @@ def main():
     data_sharding = NamedSharding(mesh, P('data', None, None, None))
     label_sharding = NamedSharding(mesh, P('data'))
     
+    # Initialize Training Monitor
+    monitor = None
+    if MONITOR_AVAILABLE and args.monitor:
+        monitor_update_freq = getattr(args, 'monitor_freq', 10)
+        monitor = TrainingMonitor(
+            num_devices=num_devices,
+            use_widgets=True,
+            update_freq=monitor_update_freq,
+        )
+        if _is_notebook_frontend():
+            monitor.display()
+        else:
+            print("Monitor active in text mode (widget UI available in notebooks).")
+        monitor.log(f"Monitor initialized: {num_devices} devices, update every {monitor_update_freq} steps")
+        monitor.log(f"Model: {args.model} | Batch: {args.batch_size} | Epochs: {args.epochs}")
+        monitor.log_memory()  # Initial memory snapshot
+    
+    # Estimate training time
+    # Count total iterations
+    train_samples = 1281167  # ImageNet train set size
+    val_samples = 50000      # ImageNet val set size
+    iterations_per_epoch = train_samples // args.batch_size
+    val_iterations_per_epoch = val_samples // args.batch_size
+    total_iterations = iterations_per_epoch * args.epochs
+    
+    print(f"\n" + "="*80)
+    print("TRAINING CONFIGURATION")
+    print("="*80)
+    print(f"Total training samples: {train_samples:,}")
+    print(f"Batch size (global): {args.batch_size}")
+    print(f"Iterations per epoch: ~{iterations_per_epoch:,}")
+    print(f"Validation iterations per epoch: ~{val_iterations_per_epoch:,}")
+    print(f"Total iterations: ~{total_iterations:,}")
+    print(f"Total epochs: {args.epochs}")
+    print("="*80)
+    print("Time estimates will be displayed after first few iterations...\n")
+    
     # Helper to process batches
     def process_batch(batch):
         if GRAIN_AVAILABLE:
-            # Grain returns dict with 'image' and 'label'
-            imgs_np = np.stack([item['image'] for item in batch])
-            lbls_np = np.array([item['label'] for item in batch])
+            # Grain Batch operation already stacks into dicts with arrays
+            imgs_np = batch['image']
+            lbls_np = batch['label']
         else:
             # PyTorch DataLoader
             imgs_np, lbls_np = get_numpy_batch(batch)
         return imgs_np, lbls_np
     
+    import time
+    epoch_times = []
+    iter_times = []
+    
+    print(f"\n" + "="*80)
+    print("STARTING TRAINING LOOP")
+    print("="*80)
+    
     for epoch in range(1, args.epochs + 1):
+        print(f"\n{'='*80}")
+        print(f"EPOCH {epoch}/{args.epochs} - Creating fresh dataloaders...")
+        print(f"{'='*80}")
+        
+        # Recreate dataloaders for each epoch
+        if GRAIN_AVAILABLE:
+            try:
+                train_loader = create_grain_dataloader(
+                    split='train',
+                    batch_size=grain_batch_size,
+                    is_train=True,
+                    cache_dir=args.cache_dir,
+                    num_epochs=1,
+                    num_devices=num_devices,
+                )
+                val_loader = create_grain_dataloader(
+                    split='validation',
+                    batch_size=grain_batch_size,
+                    is_train=False,
+                    cache_dir=args.cache_dir,
+                    num_epochs=1,
+                    num_devices=num_devices,
+                )
+                print(f"✓ Grain dataloaders created successfully for epoch {epoch}")
+            except Exception as e:
+                print(f"\n" + "!"*80)
+                print(f"FATAL ERROR creating Grain dataloaders for epoch {epoch}:")
+                print(f"{e}")
+                print(f"!"*80)
+                raise
+        else:
+            # PyTorch DataLoader fallback
+            try:
+                train_loader = DataLoader(train_dataset, batch_size=args.batch_size//num_devices, num_workers=0, 
+                                          drop_last=True, shuffle=True)
+                val_loader = DataLoader(val_dataset, batch_size=args.batch_size//num_devices, num_workers=0, 
+                                        drop_last=True, shuffle=False)
+                print(f"✓ PyTorch dataloaders created for epoch {epoch}")
+                if args.in_memory:
+                    print(f"  (using in-memory dataset)")
+            except Exception as e:
+                print(f"\n" + "!"*80)
+                print(f"FATAL ERROR creating PyTorch dataloaders for epoch {epoch}:")
+                print(f"{e}")
+                print(f"!"*80)
+                raise
+        
+        epoch_start_time = time.time()
         model.train()
         epoch_losses = []
         epoch_metrics = [] # Accuracy
         
-        pbar = tqdm(train_loader, desc=f'Epoch {epoch}')
-        for batch in pbar:
+        print(f"Starting training for epoch {epoch}...")
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch}', total=iterations_per_epoch)
+        for batch_idx, batch in enumerate(pbar):
+            iter_start_time = time.time()
             global_step += 1
             imgs_np, lbls_np = process_batch(batch)
             
@@ -638,17 +879,54 @@ def main():
             epoch_losses.append(loss_val)
             epoch_metrics.append(acc_val)
             
-            # Iteration Logging
-            if args.wandb_project:
+            iter_time = time.time() - iter_start_time
+            iter_times.append(iter_time)
+            
+            # Update training monitor
+            if monitor is not None:
+                monitor.log_iteration(
+                    epoch=epoch, batch_idx=batch_idx,
+                    loss=loss_val, acc=acc_val,
+                    iter_time=iter_time, batch_size=args.batch_size
+                )
+            
+            # Iteration Logging - log every N iterations instead of every iteration
+            if args.wandb_project and (batch_idx + 1) % args.wandb_log_freq == 0:
                 wandb.log({
                     'train/iter_loss': loss_val,
                     'train/iter_acc': acc_val,
                     'trainer/global_step': global_step,
                     'epoch': epoch
                 })
+            
+            # Update progress bar with time estimate
+            if len(iter_times) >= 5:
+                avg_iter_time = np.mean(iter_times[-5:])
+                remaining_iters = max(0, iterations_per_epoch - batch_idx - 1)
+                remaining_epochs = args.epochs - epoch
+                
+                epoch_time_estimate = avg_iter_time * (remaining_iters + val_iterations_per_epoch)
+                total_time_estimate = epoch_time_estimate + (remaining_epochs * avg_iter_time * (iterations_per_epoch + val_iterations_per_epoch))
+                
+                pbar.set_postfix({
+                    'metric': float(np.mean(epoch_metrics[-10:])),
+                    'iter_time': f'{avg_iter_time:.2f}s',
+                    'epoch_eta': f'{epoch_time_estimate/60:.1f}m'
+                })
+            
+            # Safety: break if we've done enough iterations (in case dataloader is cycling)
+            if batch_idx + 1 >= iterations_per_epoch * 2:
+                print(f"\n⚠️  WARNING: Epoch {epoch} has {batch_idx + 1} iterations (expected ~{iterations_per_epoch})")
+                print("Breaking to prevent epoch from continuing indefinitely")
+                break
 
-            pbar.set_postfix({'metric': float(np.mean(epoch_metrics[-10:]))})
-
+        epoch_time = time.time() - epoch_start_time
+        epoch_times.append(epoch_time)
+        
+        # Log actual iterations completed
+        actual_train_iters = min(batch_idx + 1, iterations_per_epoch)
+        print(f"✓ Training complete: {actual_train_iters} iterations in {epoch_time/60:.1f}m")
+        
         # Calculate epoch averages
         avg_train_loss = np.mean(epoch_losses)
         avg_train_metric = np.mean(epoch_metrics)
@@ -656,13 +934,14 @@ def main():
         # ---------------------------------------------------------------------
         # VALIDATION
         # ---------------------------------------------------------------------
+        val_start_time = time.time()
         val_acc = 0.0
         val_loss = 0.0
         
-        model.eval()
         total_acc = []
         total_loss = []
-        for batch in tqdm(val_loader, desc='Val'):
+        val_batch_idx = 0
+        for val_batch_idx, batch in enumerate(tqdm(val_loader, desc='Val', total=val_iterations_per_epoch)):
             imgs_np, lbls_np = process_batch(batch)
             
             imgs_sharded = jax.device_put(imgs_np, data_sharding)
@@ -671,10 +950,46 @@ def main():
             loss, acc = val_step(model, imgs_sharded, lbls_sharded)
             total_acc.append(float(acc))
             total_loss.append(float(loss))
+            
+            # Safety: break if validation has too many batches
+            if val_batch_idx + 1 >= val_iterations_per_epoch * 2:
+                print(f"WARNING: Validation has {val_batch_idx + 1} batches (expected ~{val_iterations_per_epoch})")
+                print("Breaking to prevent validation from continuing indefinitely")
+                break
+        
+        val_time = time.time() - val_start_time
+        actual_val_iters = val_batch_idx + 1
+        print(f"[Epoch {epoch}] Completed {actual_val_iters} validation iterations in {val_time/60:.1f}m")
         
         val_acc = np.mean(total_acc) * 100
         val_loss = np.mean(total_loss)
-        print(f"Epoch {epoch} Val Acc: {val_acc:.2f}%")
+        
+        # Update monitor with epoch summary
+        if monitor is not None:
+            monitor.log_epoch(
+                epoch=epoch,
+                train_loss=avg_train_loss,
+                train_acc=avg_train_metric,
+                val_loss=val_loss,
+                val_acc=val_acc,
+                epoch_time=time.time() - epoch_start_time
+            )
+            monitor.log_memory()  # Memory snapshot after validation
+        
+        # Calculate time estimates
+        avg_iter_time = np.mean(iter_times[-100:]) if len(iter_times) >= 100 else np.mean(iter_times)
+        remaining_epochs = args.epochs - epoch
+        total_time_per_epoch = avg_iter_time * (iterations_per_epoch + val_iterations_per_epoch)
+        total_remaining_time = total_time_per_epoch * remaining_epochs
+        
+        print(f"\nEpoch {epoch} Summary:")
+        print(f"  Train Acc: {avg_train_metric:.4f} | Train Loss: {avg_train_loss:.4f}")
+        print(f"  Val Acc: {val_acc:.2f}% | Val Loss: {val_loss:.4f}")
+        print(f"  Epoch Time: {epoch_time/60:.1f}m (Train: {(epoch_time-val_time)/60:.1f}m + Val: {val_time/60:.1f}m)")
+        print(f"  Avg Iter Time: {avg_iter_time:.2f}s")
+        if remaining_epochs > 0:
+            print(f"  Estimated Time Remaining: {total_remaining_time/3600:.1f}h ({remaining_epochs} epochs)")
+        print(f"  Total Time So Far: {sum(epoch_times)/3600:.1f}h")
         
         # ---------------------------------------------------------------------
         # LOGGING (WandB)
@@ -686,6 +1001,8 @@ def main():
                 'train/metric': avg_train_metric,
                 'val/loss': val_loss,
                 'val/acc': val_acc,
+                'timing/epoch_time_min': epoch_time / 60,
+                'timing/avg_iter_time_s': avg_iter_time,
             }
             wandb.log(log_dict)
 
@@ -707,6 +1024,16 @@ def main():
             mngr.save(step=epoch, args=save_args)
             mngr.wait_until_finished() # Ensure save completes before proceeding
             print(f"Checkpoint saved for epoch {epoch}")
+
+    # Print final summary
+    total_training_time = sum(epoch_times)
+    print(f"\n" + "="*80)
+    print("TRAINING COMPLETE")
+    print("="*80)
+    print(f"Total Training Time: {total_training_time/3600:.1f}h ({int(total_training_time/60)}m)")
+    print(f"Average Time per Epoch: {total_training_time/len(epoch_times)/60:.1f}m")
+    print(f"Best Validation Accuracy: {best_acc:.2f}%")
+    print("="*80 + "\n")
 
     if args.wandb_project:
         wandb.finish()
