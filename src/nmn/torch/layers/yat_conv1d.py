@@ -3,6 +3,7 @@ import math
 from typing import Optional, Union
 
 import torch
+import torch.nn as nn
 from torch import Tensor
 from torch.nn import functional as F
 from torch.nn.common_types import _size_1_t
@@ -26,9 +27,18 @@ class YatConv1d(Conv1d):
         constant_alpha: If True, use sqrt(2) as constant alpha. If a float,
             use that value. If None (default), use learnable alpha when
             use_alpha=True.
+        weight_normalized: If True, normalize each kernel filter to have norm 1.
+            This optimization avoids recomputing kernel norms in YAT distance
+            calculation since they are guaranteed to be 1.0.
+        tie_kernel_bank: If True, reuse shared kernels across compatible layers.
+        kernel_bank_size: Optional explicit size for shared bank (auto-expands if needed).
+        kernel_bank_id: Namespace for shared banks (allows multiple independent banks).
         param_dtype: dtype for parameter initialization (default: None, uses
             PyTorch Conv1d default). Separate from computation dtype.
     """
+    
+    # Class-level shared kernel banks
+    _KERNEL_BANKS = {}
 
     def __init__(
         self,
@@ -47,15 +57,26 @@ class YatConv1d(Conv1d):
         mask: Optional[Tensor] = None,
         epsilon: float = 1e-5,
         drop_rate: float = 0.0,
+        weight_normalized: bool = False,
+        tie_kernel_bank: bool = False,
+        kernel_bank_size: Optional[int] = None,
+        kernel_bank_id: str = 'default',
         device=None,
         dtype=None,
         param_dtype=None,
     ) -> None:
         # param_dtype controls parameter storage; dtype controls computation
         storage_dtype = param_dtype if param_dtype is not None else dtype
+        
+        # Handle shared kernel bank
+        if tie_kernel_bank:
+            bank_out_channels = kernel_bank_size or out_channels
+        else:
+            bank_out_channels = out_channels
+            
         super().__init__(
             in_channels,
-            out_channels,
+            bank_out_channels,
             kernel_size,
             stride,
             padding,
@@ -72,6 +93,47 @@ class YatConv1d(Conv1d):
         self.use_dropconnect = use_dropconnect
         self.epsilon = epsilon
         self.drop_rate = drop_rate
+        self.weight_normalized = weight_normalized
+        self.tie_kernel_bank = tie_kernel_bank
+        self.kernel_bank_size = kernel_bank_size
+        self.kernel_bank_id = kernel_bank_id
+        self._kernel_slice = slice(None, out_channels)
+        self._actual_out_channels = out_channels
+        
+        # Normalize kernel if requested
+        if self.weight_normalized:
+            reduce_dims = tuple(range(1, self.weight.dim()))
+            kernel_norm = torch.sqrt(torch.sum(self.weight**2, dim=reduce_dims, keepdim=True))
+            self.weight.data = self.weight.data / (kernel_norm + 1e-8)
+        
+        # Handle auto-expanding shared kernel bank
+        if tie_kernel_bank:
+            bank_key = (kernel_bank_id, in_channels, kernel_size, groups, storage_dtype)
+            shared_weight = YatConv1d._KERNEL_BANKS.get(bank_key)
+            
+            if shared_weight is None:
+                # First layer: register the weight as shared
+                YatConv1d._KERNEL_BANKS[bank_key] = self.weight
+            else:
+                # Bank exists: auto-expand if needed
+                existing_channels = shared_weight.shape[0]
+                if bank_out_channels > existing_channels:
+                    # Auto-expand: pad with new random initialization
+                    print(f"Auto-expanding kernel bank '{kernel_bank_id}': "
+                          f"{existing_channels} -> {bank_out_channels} filters")
+                    old_weight = shared_weight.data
+                    # Create new weight with expanded size
+                    new_weight = torch.empty(
+                        (bank_out_channels,) + old_weight.shape[1:],
+                        dtype=storage_dtype,
+                        device=old_weight.device
+                    )
+                    nn.init.kaiming_uniform_(new_weight, nonlinearity='relu')
+                    # Copy old weights
+                    new_weight[:existing_channels].copy_(old_weight)
+                    shared_weight.data = new_weight
+                    
+                self.weight = shared_weight
 
         factory_kwargs = {"device": device, "dtype": storage_dtype}
 
@@ -139,6 +201,12 @@ class YatConv1d(Conv1d):
         if self.mask is not None:
             weight = weight * self.mask
 
+        # Normalize kernel if weight normalization is enabled
+        if self.weight_normalized:
+            reduce_dims = tuple(range(1, weight.dim()))
+            kernel_norm = torch.sqrt(torch.sum(weight**2, dim=reduce_dims, keepdim=True))
+            weight = weight / (kernel_norm + 1e-8)
+
         # Compute dot product using standard convolution
         dot_prod_map = self._conv_forward(input, weight, None)
 
@@ -168,8 +236,12 @@ class YatConv1d(Conv1d):
             patch_sq_sum_map = patch_sq_sum_map_raw.repeat(1, self.out_channels, *([1] * (patch_sq_sum_map_raw.dim() - 2)))
 
         # Compute ||kernel||^2 per filter
+        # Optimization: if weights are normalized, skip computation and use 1.0
         reduce_dims = tuple(range(1, weight.dim()))
-        kernel_sq_sum_per_filter = torch.sum(weight**2, dim=reduce_dims)
+        if self.weight_normalized:
+            kernel_sq_sum_per_filter = torch.ones(weight.shape[0], device=weight.device, dtype=weight.dtype)
+        else:
+            kernel_sq_sum_per_filter = torch.sum(weight**2, dim=reduce_dims)
 
         view_shape = (1, -1) + (1,) * (dot_prod_map.dim() - 2)
         kernel_sq_sum_reshaped = kernel_sq_sum_per_filter.view(*view_shape)
@@ -195,4 +267,12 @@ class YatConv1d(Conv1d):
         return y
 
     def forward(self, input: Tensor, *, deterministic: bool = False) -> Tensor:
-        return self._yat_forward(input, F.conv1d, deterministic)
+        # Slice shared kernel if tying is enabled
+        if self.tie_kernel_bank:
+            original_weight = self.weight
+            self.weight = nn.Parameter(original_weight[self._kernel_slice])
+            result = self._yat_forward(input, F.conv1d, deterministic)
+            self.weight = original_weight
+            return result
+        else:
+            return self._yat_forward(input, F.conv1d, deterministic)

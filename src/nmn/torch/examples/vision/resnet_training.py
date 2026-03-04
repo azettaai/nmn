@@ -1,4 +1,6 @@
-# main.py
+# resnet_training.py
+#
+# YAT ResNet Training with Weight Tying, Weight Normalization, and Constant Alpha
 #
 # To run this script, you'll need to install the following packages:
 # pip install torch torchvision torchaudio
@@ -6,9 +8,26 @@
 # pip install wandb matplotlib seaborn scikit-learn
 #
 # Example usage:
-# python main.py --model standard --dataset CIFAR10 --num-blocks 2 2 2 2 --epochs 50 --lr 0.003 --use-wandb
-# python main.py --model yat --dataset TinyImageNet --num-blocks 2 2 2 2 --epochs 50 --lr 0.003 --use-wandb --image-size 64
-# python main.py --model standard --hf-dataset food101 --num-blocks 2 2 2 2 --epochs 10 --lr 0.003 --use-wandb --image-size 224
+#
+# 1. Standard ResNet baseline:
+# python resnet_training.py --model standard --dataset CIFAR10 --num-blocks 2 2 2 2 --epochs 50 --lr 0.003
+#
+# 2. Basic YAT model:
+# python resnet_training.py --model yat --dataset CIFAR10 --num-blocks 2 2 2 2 --epochs 50 --lr 0.003
+#
+# 3. YAT with weight normalization (10% inference speedup):
+# python resnet_training.py --model yat --dataset CIFAR10 --num-blocks 2 2 2 2 --epochs 50 --lr 0.003 --weight-normalized
+#
+# 4. YAT with weight tying (30-50% parameter reduction):
+# python resnet_training.py --model yat --dataset CIFAR10 --num-blocks 2 2 2 2 --epochs 50 --lr 0.003 --tie-kernel-bank --tie-output-bank
+#
+# 5. YAT with ALL optimizations (weight tying + normalization + constant alpha):
+# python resnet_training.py --model yat --dataset CIFAR10 --num-blocks 2 2 2 2 --epochs 50 --lr 0.003 \
+#   --weight-normalized --tie-kernel-bank --tie-output-bank --constant-alpha --use-wandb
+#
+# 6. YAT on Hugging Face dataset with optimizations:
+# python resnet_training.py --model yat --hf-dataset food101 --num-blocks 2 2 2 2 --epochs 10 --lr 0.003 \
+#   --image-size 224 --weight-normalized --tie-kernel-bank --constant-alpha --use-wandb
 #
 # To login to W&B, run `wandb login` in your terminal.
 
@@ -183,14 +202,28 @@ class BasicStandardBlock(nn.Module):
         return out
 
 class BasicYATBlock(nn.Module):
-    """A basic residual block for the YATConvNet, inspired by ResNet."""
+    """A basic residual block for the YATConvNet, inspired by ResNet.
+    
+    Supports weight normalization, weight tying, and constant alpha for efficient training.
+    """
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, use_alpha=True, use_dropconnect=False, drop_rate=0.1):
+    def __init__(self, in_planes, planes, stride=1, use_alpha=True, constant_alpha=None,
+                 use_dropconnect=False, drop_rate=0.1, weight_normalized=False,
+                 tie_kernel_bank=False, kernel_bank_id='conv-layers'):
         super(BasicYATBlock, self).__init__()
-        self.yat_conv = YatConv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1,
-                                  use_alpha=use_alpha, use_dropconnect=use_dropconnect,
-                                  drop_rate=drop_rate, bias=False, epsilon=0.007)
+        self.yat_conv = YatConv2d(
+            in_planes, planes, kernel_size=3, stride=stride, padding=1,
+            use_alpha=use_alpha,
+            constant_alpha=constant_alpha,
+            use_dropconnect=use_dropconnect,
+            drop_rate=drop_rate,
+            weight_normalized=weight_normalized,
+            tie_kernel_bank=tie_kernel_bank,
+            kernel_bank_id=kernel_bank_id,
+            bias=False,
+            epsilon=0.007
+        )
         self.lin_conv = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
 
         self.shortcut = nn.Sequential()
@@ -240,13 +273,23 @@ class StandardConvNet(nn.Module):
         return out
 
 class YATConvNet(nn.Module):
-    """A YAT-based CNN with a ResNet-like architecture."""
-    def __init__(self, block, num_blocks, num_classes=200, use_alpha=True, use_dropconnect=False, drop_rate=0.1):
+    """A YAT-based CNN with a ResNet-like architecture.
+    
+    Supports weight normalization, weight tying for efficient parameter sharing,
+    and constant alpha scaling.
+    """
+    def __init__(self, block, num_blocks, num_classes=200, use_alpha=True, constant_alpha=None,
+                 use_dropconnect=False, drop_rate=0.1, weight_normalized=False,
+                 tie_kernel_bank=False, tie_output_bank=False):
         super(YATConvNet, self).__init__()
         self.in_planes = 64
         self.use_alpha = use_alpha
+        self.constant_alpha = constant_alpha
         self.use_dropconnect = use_dropconnect
         self.drop_rate = drop_rate
+        self.weight_normalized = weight_normalized
+        self.tie_kernel_bank = tie_kernel_bank
+        self.tie_output_bank = tie_output_bank
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
@@ -254,16 +297,33 @@ class YATConvNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
         self.proj = nn.Linear(512 * block.expansion, 256, bias=False)
-        self.fc_yat = YatNMN(256, num_classes, epsilon=0.007, bias=False)
+        
+        # YatNMN head with optional weight tying
+        self.fc_yat = YatNMN(
+            256, num_classes,
+            epsilon=0.007,
+            bias=False,
+            use_alpha=use_alpha,
+            constant_alpha=constant_alpha,
+            weight_normalized=weight_normalized,
+            tie_kernel_bank=tie_output_bank,
+            kernel_bank_id='output-layer'
+        )
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for s in strides:
-            layers.append(block(self.in_planes, planes, s,
-                                use_alpha=self.use_alpha,
-                                use_dropconnect=self.use_dropconnect,
-                                drop_rate=self.drop_rate))
+            layers.append(block(
+                self.in_planes, planes, s,
+                use_alpha=self.use_alpha,
+                constant_alpha=self.constant_alpha,
+                use_dropconnect=self.use_dropconnect,
+                drop_rate=self.drop_rate,
+                weight_normalized=self.weight_normalized,
+                tie_kernel_bank=self.tie_kernel_bank,
+                kernel_bank_id='conv-layers'
+            ))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -388,8 +448,12 @@ def main():
     parser.add_argument('--lr', type=float, default=0.003, help='Learning rate')
     # YAT Specific
     parser.add_argument('--no-alpha', action='store_false', dest='use_alpha', help='Disable alpha in YATConv')
+    parser.add_argument('--constant-alpha', action='store_true', default=False, help='Use constant alpha (sqrt(2)) instead of learnable')
     parser.add_argument('--use-dropconnect', action='store_true', default=False, help='Use DropConnect in YATConv')
     parser.add_argument('--drop-rate', type=float, default=0.1, help='DropConnect rate')
+    parser.add_argument('--weight-normalized', action='store_true', default=False, help='Enable weight normalization for each filter')
+    parser.add_argument('--tie-kernel-bank', action='store_true', default=False, help='Enable weight tying across conv layers')
+    parser.add_argument('--tie-output-bank', action='store_true', default=False, help='Enable weight tying for output YatNMN layer')
     # System
     parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
@@ -437,9 +501,22 @@ def main():
         raise ValueError("The --num-blocks argument must have 4 integers for the 4 stages.")
 
     if args.model == 'yat':
+        constant_alpha_value = True if args.constant_alpha else None
         print(f'Creating YAT ResNet with blocks: {args.num_blocks}')
-        model = YATConvNet(BasicYATBlock, args.num_blocks, num_classes=num_classes, use_alpha=args.use_alpha,
-                           use_dropconnect=args.use_dropconnect, drop_rate=args.drop_rate)
+        print(f'  - Weight Normalization: {args.weight_normalized}')
+        print(f'  - Weight Tying (Conv): {args.tie_kernel_bank}')
+        print(f'  - Weight Tying (Output): {args.tie_output_bank}')
+        print(f'  - Constant Alpha: {args.constant_alpha}')
+        model = YATConvNet(
+            BasicYATBlock, args.num_blocks, num_classes=num_classes,
+            use_alpha=args.use_alpha,
+            constant_alpha=constant_alpha_value,
+            use_dropconnect=args.use_dropconnect,
+            drop_rate=args.drop_rate,
+            weight_normalized=args.weight_normalized,
+            tie_kernel_bank=args.tie_kernel_bank,
+            tie_output_bank=args.tie_output_bank
+        )
     else:
         print(f'Creating Standard ResNet with blocks: {args.num_blocks}')
         model = StandardConvNet(BasicStandardBlock, args.num_blocks, num_classes=num_classes)

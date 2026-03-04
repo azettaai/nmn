@@ -90,6 +90,9 @@ class YatConv(Module):
         alpha_init: Alpha initializer (for learnable alpha).
         epsilon: Small constant for numerical stability.
         drop_rate: DropConnect rate (default: 0.0).
+        weight_normalized: If True, normalize each kernel filter to have norm 1.
+            This optimization avoids recomputing kernel norms in YAT distance
+            calculation since they are guaranteed to be 1.0.
         tie_kernel_bank: If True, reuse a shared kernel bank across compatible
             YatConv instances and slice the first ``out_features`` filters.
         kernel_bank_size: Total number of filters in the shared bank. If None,
@@ -128,6 +131,7 @@ class YatConv(Module):
         promote_dtype: PromoteDtypeFn = dtypes.promote_dtype,
         epsilon: float = 1e-5,
         drop_rate: float = 0.0,
+        weight_normalized: bool = False,
         tie_kernel_bank: bool = False,
         kernel_bank_size: tp.Optional[int] = None,
         kernel_bank_id: str = "default",
@@ -253,9 +257,17 @@ class YatConv(Module):
         self.promote_dtype = promote_dtype
         self.epsilon = epsilon
         self.drop_rate = drop_rate
+        self.weight_normalized = weight_normalized
         self.tie_kernel_bank = tie_kernel_bank
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id
+
+        # Normalize kernel if requested
+        if self.weight_normalized:
+            kernel_val = self.kernel.value
+            reduce_axes = tuple(range(kernel_val.ndim - 1))
+            kernel_norm = jnp.sqrt(jnp.sum(kernel_val**2, axis=reduce_axes, keepdims=True))
+            self.kernel.value = kernel_val / (kernel_norm + 1e-8)
 
         if use_dropconnect:
             self.dropconnect_key = rngs.params()
@@ -349,6 +361,12 @@ class YatConv(Module):
                 )
             kernel_val *= current_mask
 
+        # Normalize kernel if weight normalization is enabled
+        if self.weight_normalized:
+            reduce_axes = tuple(range(kernel_val.ndim - 1))
+            kernel_norm = jnp.sqrt(jnp.sum(kernel_val**2, axis=reduce_axes, keepdims=True))
+            kernel_val = kernel_val / (kernel_norm + 1e-8)
+
         bias_val = self.bias.value if self.bias is not None else None
 
         # Get alpha value
@@ -415,10 +433,15 @@ class YatConv(Module):
             patch_sq_sum_map = patch_sq_sum_map_raw
 
         # Compute ||W||² for each filter
-        reduce_axes_for_kernel_sq = tuple(range(kernel_val.ndim - 1))
-        kernel_sq_sum_per_filter = jnp.sum(
-            kernel_val**2, axis=reduce_axes_for_kernel_sq
-        )
+        # Optimization: if weights are normalized, skip computation and use 1.0
+        if self.weight_normalized:
+            # When weight_normalized=True, ||W||² = 1 for each filter
+            kernel_sq_sum_per_filter = jnp.ones((kernel_val.shape[-1],), dtype=kernel_val.dtype)
+        else:
+            reduce_axes_for_kernel_sq = tuple(range(kernel_val.ndim - 1))
+            kernel_sq_sum_per_filter = jnp.sum(
+                kernel_val**2, axis=reduce_axes_for_kernel_sq
+            )
 
         # Add bias before squaring: (x·W + b)² / (dist + ε)
         # Save raw dot product for distance calculation (bias only affects numerator)

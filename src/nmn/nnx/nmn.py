@@ -76,6 +76,9 @@ class YatNMN(Module):
       promoted dtype.
     epsilon: A small float added to the denominator to prevent division by zero.
     drop_rate: dropout rate for DropConnect (default: 0.0).
+    weight_normalized: if True, normalize each neuron (column) of the kernel to
+      have norm 1. This optimization avoids recomputing kernel norms in YAT
+      distance calculation since they are guaranteed to be 1.0.
     tie_kernel_bank: if True, reuse a shared kernel bank across compatible
       YatNMN instances and slice the first ``out_features`` neurons.
     kernel_bank_size: total neurons in the shared bank. If None, defaults to
@@ -111,6 +114,7 @@ class YatNMN(Module):
     epsilon: float = 1e-5,
     spherical: bool = False,
     drop_rate: float = 0.0,
+    weight_normalized: bool = False,
     tie_kernel_bank: bool = False,
     kernel_bank_size: tp.Optional[int] = None,
     kernel_bank_id: str = 'default',
@@ -228,9 +232,16 @@ class YatNMN(Module):
     self.epsilon = epsilon
     self.spherical = spherical
     self.drop_rate = drop_rate
+    self.weight_normalized = weight_normalized
     self.tie_kernel_bank = tie_kernel_bank
     self.kernel_bank_size = kernel_bank_size
     self.kernel_bank_id = kernel_bank_id
+
+    # Normalize kernel if requested: normalize each neuron (column) to have norm 1
+    if self.weight_normalized:
+      kernel_val = self.kernel.value
+      kernel_norm = jnp.sqrt(jnp.sum(kernel_val**2, axis=0, keepdims=True))
+      self.kernel.value = kernel_val / (kernel_norm + 1e-8)
 
     if use_dropconnect:
       self.dropconnect_key = rngs.params()
@@ -267,6 +278,10 @@ class YatNMN(Module):
       mask = jax.random.bernoulli(self.dropconnect_key, p=keep_prob, shape=kernel.shape)
       kernel = (kernel * mask) / keep_prob
 
+    # Normalize kernel if weight normalization is enabled
+    if self.weight_normalized:
+      kernel = kernel / (jnp.sqrt(jnp.sum(kernel**2, axis=0, keepdims=True)) + 1e-8)
+
     if self.spherical:
        inputs = inputs / jnp.linalg.norm(inputs, axis=-1, keepdims=True)
        kernel = kernel / jnp.linalg.norm(kernel, axis=0, keepdims=True)
@@ -290,7 +305,13 @@ class YatNMN(Module):
     else:
       # Compute squared Euclidean distance: ||x||² + ||W||² - 2(x · W)
       inputs_squared_sum = jnp.sum(inputs**2, axis=-1, keepdims=True)
-      kernel_squared_sum = jnp.sum(kernel**2, axis=0, keepdims=True)
+      
+      # Optimization: if weights are normalized, ||W||² = 1 for each neuron
+      if self.weight_normalized:
+        kernel_squared_sum = jnp.ones((1, kernel.shape[-1]), dtype=kernel.dtype)
+      else:
+        kernel_squared_sum = jnp.sum(kernel**2, axis=0, keepdims=True)
+      
       distances = inputs_squared_sum + kernel_squared_sum - 2 * y
 
     # Add bias

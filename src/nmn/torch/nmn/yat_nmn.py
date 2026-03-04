@@ -31,6 +31,12 @@ class YatNMN(nn.Module):
         param_dtype (torch.dtype): Data type for parameter initialization (default: float32).
         epsilon (float): Small constant to avoid division by zero
         spherical (bool): Whether to use spherical mode (normalize inputs and kernel)
+        weight_normalized (bool): If True, normalize each neuron (column) of the kernel to
+            have norm 1. This optimization avoids recomputing kernel norms in YAT
+            distance calculation since they are guaranteed to be 1.0.
+        tie_kernel_bank (bool): If True, reuse shared kernels across compatible layers.
+        kernel_bank_size (int): Optional explicit size for shared bank (auto-expands if needed).
+        kernel_bank_id (str): Namespace for shared banks (allows multiple independent banks).
         kernel_init (callable): Initializer for the weight matrix
         bias_init (callable): Initializer for the bias
         alpha_init (callable): Initializer for the scaling parameter (only used if constant_alpha is None)
@@ -38,6 +44,8 @@ class YatNMN(nn.Module):
 
     # Default constant alpha value (sqrt(2))
     DEFAULT_CONSTANT_ALPHA = math.sqrt(2.0)
+    # Class-level shared kernel banks
+    _KERNEL_BANKS = {}
 
     def __init__(
         self,
@@ -51,6 +59,10 @@ class YatNMN(nn.Module):
         epsilon: float = 1e-5,
         spherical: bool = False,
         positive_init: bool = False,
+        weight_normalized: bool = False,
+        tie_kernel_bank: bool = False,
+        kernel_bank_size: Optional[int] = None,
+        kernel_bank_id: str = 'default',
         kernel_init: callable = None,
         bias_init: callable = None,
         alpha_init: callable = None
@@ -65,16 +77,59 @@ class YatNMN(nn.Module):
         self.epsilon = epsilon
         self.spherical = spherical
         self.positive_init = positive_init
+        self.weight_normalized = weight_normalized
+        self.tie_kernel_bank = tie_kernel_bank
+        self.kernel_bank_size = kernel_bank_size
+        self.kernel_bank_id = kernel_bank_id
+        self._kernel_slice = slice(None)
 
         # Weight initialization
         if kernel_init is None:
             kernel_init = nn.init.xavier_normal_
 
-        # Create weight parameter
-        self.weight = nn.Parameter(torch.empty(
-            (out_features, in_features),
-            dtype=param_dtype
-        ))
+        # Handle shared kernel bank
+        if tie_kernel_bank:
+            # Auto-calculate bank size
+            bank_out_features = kernel_bank_size or out_features
+            bank_key = (kernel_bank_id, in_features, param_dtype, id(kernel_init), positive_init)
+            
+            shared_weight = YatNMN._KERNEL_BANKS.get(bank_key)
+            if shared_weight is None:
+                # First layer: create bank
+                self.weight = nn.Parameter(torch.empty(
+                    (bank_out_features, in_features),
+                    dtype=param_dtype
+                ))
+                YatNMN._KERNEL_BANKS[bank_key] = self.weight
+            else:
+                # Bank exists: auto-expand if needed
+                existing_size = shared_weight.shape[0]
+                if bank_out_features > existing_size:
+                    # Auto-expand: pad with new random initialization
+                    print(f"Auto-expanding kernel bank '{kernel_bank_id}': "
+                          f"{existing_size} -> {bank_out_features} neurons")
+                    old_weight = shared_weight.data
+                    new_weight = torch.empty(
+                        (bank_out_features, in_features),
+                        dtype=param_dtype,
+                        device=old_weight.device
+                    )
+                    kernel_init(new_weight)
+                    if positive_init:
+                        new_weight.abs_()
+                    # Copy old weights
+                    new_weight[:existing_size].copy_(old_weight)
+                    shared_weight.data = new_weight
+                    YatNMN._KERNEL_BANKS[bank_key] = shared_weight
+                self.weight = shared_weight
+            
+            self._kernel_slice = slice(0, out_features)
+        else:
+            # Create weight parameter (non-shared)
+            self.weight = nn.Parameter(torch.empty(
+                (out_features, in_features),
+                dtype=param_dtype
+            ))
 
         # Handle alpha configuration
         # Priority: constant_alpha > alpha
@@ -114,6 +169,11 @@ class YatNMN(nn.Module):
 
         # Initialize parameters
         self.reset_parameters(kernel_init, bias_init, alpha_init)
+
+        # Normalize kernel if requested: normalize each neuron (column) to have norm 1
+        if self.weight_normalized:
+            weight_norm = torch.sqrt(torch.sum(self.weight**2, dim=-1, keepdim=True))
+            self.weight.data = self.weight.data / (weight_norm + 1e-8)
 
     def reset_parameters(
         self,
@@ -186,6 +246,9 @@ class YatNMN(nn.Module):
             torch.Tensor: Transformed output
         """
         kernel = self.weight
+        # Slice shared kernel if tying is enabled
+        if self.tie_kernel_bank:
+            kernel = kernel[self._kernel_slice]
         bias = self.bias
         alpha_param = self.alpha if self.alpha is not None else None
 
@@ -196,6 +259,10 @@ class YatNMN(nn.Module):
         if self.spherical:
             x = x / (torch.norm(x, dim=-1, keepdim=True) + 1e-8)
             kernel = kernel / (torch.norm(kernel, dim=-1, keepdim=True) + 1e-8)
+
+        # Normalize kernel if weight normalization is enabled
+        if self.weight_normalized:
+            kernel = kernel / (torch.sqrt(torch.sum(kernel**2, dim=-1, keepdim=True)) + 1e-8)
 
         # Compute dot product: x · W
         y = torch.matmul(x, kernel.t())
@@ -212,7 +279,13 @@ class YatNMN(nn.Module):
             distances = 2 - 2 * (y - bias if bias is not None else y)
         else:
             inputs_squared_sum = torch.sum(x**2, dim=-1, keepdim=True)
-            kernel_squared_sum = torch.sum(kernel**2, dim=-1)
+            
+            # Optimization: if weights are normalized, ||W||² = 1 for each neuron
+            if self.weight_normalized:
+                kernel_squared_sum = torch.ones_like(kernel[:, 0:1])
+            else:
+                kernel_squared_sum = torch.sum(kernel**2, dim=-1, keepdim=True)
+            
             # Reuse dot product for distance: ||x||² + ||W||² - 2(x·W)
             dot_for_dist = y - bias if bias is not None else y
             distances = inputs_squared_sum + kernel_squared_sum - 2 * dot_for_dist
