@@ -76,10 +76,16 @@ class YatNMN(Module):
       promoted dtype.
     epsilon: A small float added to the denominator to prevent division by zero.
     drop_rate: dropout rate for DropConnect (default: 0.0).
+    tie_kernel_bank: if True, reuse a shared kernel bank across compatible
+      YatNMN instances and slice the first ``out_features`` neurons.
+    kernel_bank_size: total neurons in the shared bank. If None, defaults to
+      ``out_features`` for the creating instance.
+    kernel_bank_id: optional bank namespace to control sharing groups.
     rngs: rng key.
   """
 
   __data__ = ('kernel', 'bias', 'alpha', 'dropconnect_key')
+  _KERNEL_BANKS: dict[tuple[tp.Any, ...], nnx.Param] = {}
 
   # Default constant alpha value (sqrt(2))
   DEFAULT_CONSTANT_ALPHA = jnp.sqrt(2.0)  # jnp.sqrt(2.0)
@@ -105,14 +111,56 @@ class YatNMN(Module):
     epsilon: float = 1e-5,
     spherical: bool = False,
     drop_rate: float = 0.0,
+    tie_kernel_bank: bool = False,
+    kernel_bank_size: tp.Optional[int] = None,
+    kernel_bank_id: str = 'default',
     rngs: rnglib.Rngs,
   ):
 
-    kernel_key = rngs.params()
-    kernel_val = kernel_init(kernel_key, (in_features, out_features), param_dtype)
-    if positive_init:
-      kernel_val = jnp.abs(kernel_val)
-    self.kernel = nnx.Param(kernel_val)
+    self._tie_kernel_bank = tie_kernel_bank
+    self._kernel_slice = slice(None)
+    self.kernel_shape = (in_features, out_features)
+
+    if tie_kernel_bank:
+      bank_out_features = kernel_bank_size or out_features
+      if bank_out_features < out_features:
+        raise ValueError(
+          'kernel_bank_size must be >= out_features when tie_kernel_bank=True. '
+          f'Got kernel_bank_size={bank_out_features}, out_features={out_features}.'
+        )
+
+      bank_shape = (in_features, bank_out_features)
+      bank_key = (
+        kernel_bank_id,
+        in_features,
+        param_dtype,
+        kernel_init,
+        positive_init,
+      )
+
+      shared_kernel = YatNMN._KERNEL_BANKS.get(bank_key)
+      if shared_kernel is None:
+        kernel_key = rngs.params()
+        kernel_val = kernel_init(kernel_key, bank_shape, param_dtype)
+        if positive_init:
+          kernel_val = jnp.abs(kernel_val)
+        shared_kernel = nnx.Param(kernel_val)
+        YatNMN._KERNEL_BANKS[bank_key] = shared_kernel
+      elif shared_kernel.value.shape != bank_shape:
+        raise ValueError(
+          'Shared kernel bank shape mismatch. '
+          f'Existing shape={shared_kernel.value.shape}, requested shape={bank_shape}. '
+          'Use a different kernel_bank_id or a consistent kernel_bank_size.'
+        )
+
+      self.kernel = shared_kernel
+      self._kernel_slice = slice(0, out_features)
+    else:
+      kernel_key = rngs.params()
+      kernel_val = kernel_init(kernel_key, (in_features, out_features), param_dtype)
+      if positive_init:
+        kernel_val = jnp.abs(kernel_val)
+      self.kernel = nnx.Param(kernel_val)
     self.bias: nnx.Param[jax.Array] | None
     if use_bias:
       bias_key = rngs.params()
@@ -166,6 +214,9 @@ class YatNMN(Module):
     self.epsilon = epsilon
     self.spherical = spherical
     self.drop_rate = drop_rate
+    self.tie_kernel_bank = tie_kernel_bank
+    self.kernel_bank_size = kernel_bank_size
+    self.kernel_bank_id = kernel_bank_id
 
     if use_dropconnect:
       self.dropconnect_key = rngs.params()
@@ -185,6 +236,8 @@ class YatNMN(Module):
       The transformed input.
     """
     kernel = self.kernel.value
+    if self._tie_kernel_bank:
+      kernel = kernel[:, self._kernel_slice]
     bias = self.bias.value if self.bias is not None else None
     
     # Get alpha value (either learnable or constant)

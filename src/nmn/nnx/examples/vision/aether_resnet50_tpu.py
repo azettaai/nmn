@@ -17,17 +17,22 @@ import orbax.checkpoint as ocp
 import wandb
 
 # Data Loading
-from torch.utils.data import DataLoader, IterableDataset, Dataset
-from datasets import load_dataset
+try:
+    import grain.python as grain
+    GRAIN_AVAILABLE = True
+except ImportError:
+    GRAIN_AVAILABLE = False
+    from torch.utils.data import DataLoader, IterableDataset, Dataset
+    from torchvision import transforms
+    from PIL import PngImagePlugin
+    PngImagePlugin.MAX_TEXT_CHUNK = 100 * (1024**2)
 
-from torchvision import transforms
-from PIL import PngImagePlugin
+from datasets import load_dataset
 from tqdm import tqdm
 import numpy as np
 from nmn.nnx.conv import YatConv
+from nmn.nnx.nmn import YatNMN
 
-# Fix PIL PNG decompression limit
-PngImagePlugin.MAX_TEXT_CHUNK = 100 * (1024**2)
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # -----------------------------------------------------------------------------
@@ -38,9 +43,13 @@ class BasicBlock(nnx.Module):
     expansion = 1
 
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1,
-                 downsample: Optional[nnx.Module] = None, dtype=jnp.float32, rngs: nnx.Rngs = None):
+                 downsample: Optional[nnx.Module] = None, dtype=jnp.float32,
+                 tie_yat_kernels: bool = False, yat_kernel_bank_size: Optional[int] = None,
+                 yat_kernel_bank_id: str = 'resnet-yat', rngs: nnx.Rngs = None):
         self.conv1 = YatConv(in_channels, out_channels, kernel_size=(3, 3),
-                              strides=stride, padding=1, use_bias=False, constant_alpha=True, dtype=dtype, rngs=rngs)
+                              strides=stride, padding=1, use_bias=False, constant_alpha=True,
+                              tie_kernel_bank=tie_yat_kernels, kernel_bank_size=yat_kernel_bank_size,
+                              kernel_bank_id=yat_kernel_bank_id, dtype=dtype, rngs=rngs)
         self.conv2 = nnx.Conv(out_channels, out_channels, kernel_size=(3, 3),
                               strides=1, padding=1, use_bias=False, dtype=dtype, rngs=rngs)
         self.downsample = downsample
@@ -61,11 +70,15 @@ class Bottleneck(nnx.Module):
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1,
-                 downsample: Optional[nnx.Module] = None, dtype=jnp.float32, rngs: nnx.Rngs = None):
+                 downsample: Optional[nnx.Module] = None, dtype=jnp.float32,
+                 tie_yat_kernels: bool = False, yat_kernel_bank_size: Optional[int] = None,
+                 yat_kernel_bank_id: str = 'resnet-yat', rngs: nnx.Rngs = None):
         self.conv1 = nnx.Conv(in_channels, out_channels, kernel_size=(1, 1),
                               use_bias=False, dtype=dtype, rngs=rngs)
         self.conv2 = YatConv(out_channels, out_channels, kernel_size=(3, 3),
-                              strides=stride, padding=1, use_bias=False, constant_alpha=True, dtype=dtype, rngs=rngs)
+                              strides=stride, padding=1, use_bias=False, constant_alpha=True,
+                              tie_kernel_bank=tie_yat_kernels, kernel_bank_size=yat_kernel_bank_size,
+                              kernel_bank_id=yat_kernel_bank_id, dtype=dtype, rngs=rngs)
         self.conv3 = nnx.Conv(out_channels, out_channels * self.expansion,
                               kernel_size=(1, 1), use_bias=False, dtype=dtype, rngs=rngs)
         self.downsample = downsample
@@ -95,9 +108,22 @@ class DownsampleBlock(nnx.Module):
 
 class ResNet(nnx.Module):
     def __init__(self, block_cls, layers: List[int], num_classes: int = 1000,
-                 dtype=jnp.float32, rngs: nnx.Rngs = None):
+                 dtype=jnp.float32, tie_yat_kernels: bool = False,
+                 yat_kernel_bank_size: Optional[int] = None,
+                 yat_kernel_bank_id: str = 'resnet-yat',
+                 use_yat_head: bool = True,
+                 tie_yat_nmn_kernels: bool = False,
+                 yat_nmn_kernel_bank_size: Optional[int] = None,
+                 yat_nmn_kernel_bank_id: str = 'resnet-yat-head', rngs: nnx.Rngs = None):
         self.in_channels = 64
         self.dtype = dtype
+        self.tie_yat_kernels = tie_yat_kernels
+        self.yat_kernel_bank_size = yat_kernel_bank_size
+        self.yat_kernel_bank_id = yat_kernel_bank_id
+        self.use_yat_head = use_yat_head
+        self.tie_yat_nmn_kernels = tie_yat_nmn_kernels
+        self.yat_nmn_kernel_bank_size = yat_nmn_kernel_bank_size
+        self.yat_nmn_kernel_bank_id = yat_nmn_kernel_bank_id
 
         self.conv1 = nnx.Conv(3, 64, kernel_size=(7, 7), strides=2, padding=3,
                               use_bias=False, dtype=dtype, rngs=rngs)
@@ -109,7 +135,20 @@ class ResNet(nnx.Module):
         self.layer4 = self._make_layer(block_cls, 512, layers[3], stride=2, dtype=dtype, rngs=rngs)
 
         self.feature_dim = 512 * block_cls.expansion
-        self.head = nnx.Linear(self.feature_dim, num_classes, use_bias=False, dtype=dtype, rngs=rngs)
+        if self.use_yat_head:
+            self.head = YatNMN(
+                self.feature_dim,
+                num_classes,
+                use_bias=False,
+                constant_alpha=True,
+                tie_kernel_bank=self.tie_yat_nmn_kernels,
+                kernel_bank_size=self.yat_nmn_kernel_bank_size,
+                kernel_bank_id=self.yat_nmn_kernel_bank_id,
+                dtype=dtype,
+                rngs=rngs,
+            )
+        else:
+            self.head = nnx.Linear(self.feature_dim, num_classes, use_bias=False, dtype=dtype, rngs=rngs)
 
     def _make_layer(self, block_cls, out_channels, blocks, stride=1, dtype=jnp.float32, rngs=None):
         downsample = None
@@ -117,10 +156,28 @@ class ResNet(nnx.Module):
             downsample = DownsampleBlock(self.in_channels, out_channels * block_cls.expansion, stride, dtype, rngs)
 
         layers = []
-        layers.append(block_cls(self.in_channels, out_channels, stride, downsample, dtype=dtype, rngs=rngs))
+        layers.append(block_cls(
+            self.in_channels,
+            out_channels,
+            stride,
+            downsample,
+            dtype=dtype,
+            tie_yat_kernels=self.tie_yat_kernels,
+            yat_kernel_bank_size=self.yat_kernel_bank_size,
+            yat_kernel_bank_id=self.yat_kernel_bank_id,
+            rngs=rngs,
+        ))
         self.in_channels = out_channels * block_cls.expansion
         for _ in range(1, blocks):
-            layers.append(block_cls(self.in_channels, out_channels, dtype=dtype, rngs=rngs))
+            layers.append(block_cls(
+                self.in_channels,
+                out_channels,
+                dtype=dtype,
+                tie_yat_kernels=self.tie_yat_kernels,
+                yat_kernel_bank_size=self.yat_kernel_bank_size,
+                yat_kernel_bank_id=self.yat_kernel_bank_id,
+                rngs=rngs,
+            ))
         
         return nnx.List(layers)
 
@@ -145,67 +202,174 @@ class ResNet(nnx.Module):
 # 2. Data Loading
 # -----------------------------------------------------------------------------
 
-class ImageNetStreamDataset(IterableDataset):
-    def __init__(self, split='train', transform=None):
-        self.dataset = load_dataset('mlnomad/imagenet-1k-224', split=split, streaming=True)
-        self.transform = transform
+if GRAIN_AVAILABLE:
+    # Grain-based data pipeline (optimized for TPU)
+    class HFDataSource(grain.RandomAccessDataSource):
+        """Grain data source wrapping HuggingFace dataset."""
+        def __init__(self, split='train', cache_dir=None):
+            self.dataset = load_dataset(
+                'mlnomad/imagenet-1k-224',
+                split=split,
+                streaming=False,
+                cache_dir=cache_dir
+            )
+        
+        def __len__(self):
+            return len(self.dataset)
+        
+        def __getitem__(self, idx):
+            sample = self.dataset[idx]
+            image = sample['image']
+            label = sample['label']
+            # Convert PIL to numpy (HWC format)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            image_np = np.array(image, dtype=np.uint8)
+            return {'image': image_np, 'label': label}
+    
+    class PreprocessOp(grain.MapTransform):
+        """JAX-native preprocessing operations."""
+        def __init__(self, is_train=True, image_size=224):
+            self.is_train = is_train
+            self.image_size = image_size
+            self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+            self.std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        
+        def map(self, element):
+            image = element['image']
+            label = element['label']
+            
+            # Random crop/resize
+            if self.is_train:
+                # Simple random crop for now (could add more augmentations)
+                h, w = image.shape[:2]
+                if h > self.image_size or w > self.image_size:
+                    # Center crop as fallback
+                    top = (h - self.image_size) // 2
+                    left = (w - self.image_size) // 2
+                    image = image[top:top+self.image_size, left:left+self.image_size]
+            else:
+                # Center crop
+                h, w = image.shape[:2]
+                top = (h - self.image_size) // 2
+                left = (w - self.image_size) // 2
+                image = image[top:top+self.image_size, left:left+self.image_size]
+            
+            # Normalize
+            image = image.astype(np.float32) / 255.0
+            image = (image - self.mean) / self.std
+            
+            return {'image': image, 'label': label}
 
-    def __iter__(self):
-        for sample in self.dataset:
+else:
+    # Fallback to PyTorch DataLoader
+    class ImageNetStreamDataset(IterableDataset):
+        def __init__(self, split='train', transform=None):
+            self.dataset = load_dataset('mlnomad/imagenet-1k-224', split=split, streaming=True)
+            self.transform = transform
+
+        def __iter__(self):
+            for sample in self.dataset:
+                try:
+                    image = sample['image']
+                    label = sample['label']
+                    if image.mode != 'RGB':
+                        image = image.convert('RGB')
+                    if self.transform:
+                        image = self.transform(image)
+                    yield image, label
+                except Exception:
+                    continue
+
+    class ImageNetMapDataset(Dataset):
+        def __init__(self, split='train', transform=None, cache_dir=None, keep_in_memory=False):
+            self.dataset = load_dataset('mlnomad/imagenet-1k-224', split=split, streaming=False, 
+                                        cache_dir=cache_dir, keep_in_memory=keep_in_memory)
+            self.transform = transform
+
+        def __len__(self):
+            return len(self.dataset)
+
+        def __getitem__(self, idx):
             try:
+                sample = self.dataset[idx]
                 image = sample['image']
                 label = sample['label']
                 if image.mode != 'RGB':
                     image = image.convert('RGB')
                 if self.transform:
                     image = self.transform(image)
-                yield image, label
-            except Exception:
-                continue
+                return image, label
+            except Exception as e:
+                raise e
 
-class ImageNetMapDataset(Dataset):
-    def __init__(self, split='train', transform=None, cache_dir=None, keep_in_memory=False):
-        self.dataset = load_dataset('mlnomad/imagenet-1k-224', split=split, streaming=False, 
-                                    cache_dir=cache_dir, keep_in_memory=keep_in_memory)
-        self.transform = transform
+    def get_transforms(is_train=True):
+        if is_train:
+            return transforms.Compose([
+                transforms.RandomResizedCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+        else:
+            return transforms.Compose([
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
 
-    def __len__(self):
-        return len(self.dataset)
+    def get_numpy_batch(batch):
+        images, labels = batch
+        # PyTorch NCHW -> JAX NHWC
+        images_np = images.numpy().transpose(0, 2, 3, 1)
+        labels_np = labels.numpy()
+        return images_np, labels_np
 
-    def __getitem__(self, idx):
-        try:
-            sample = self.dataset[idx]
-            image = sample['image']
-            label = sample['label']
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            if self.transform:
-                image = self.transform(image)
-            return image, label
-        except Exception as e:
-            raise e
-
-def get_transforms(is_train=True):
+def create_grain_dataloader(split, batch_size, is_train=True, cache_dir=None, num_epochs=None):
+    """Create Grain DataLoader with proper prefetching."""
+    if not GRAIN_AVAILABLE:
+        raise RuntimeError("Grain is not available. Install with: pip install grain")
+    
+    # Create data source
+    data_source = HFDataSource(split=split, cache_dir=cache_dir)
+    
+    # Create sampler
     if is_train:
-        return transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+        sampler = grain.IndexSampler(
+            len(data_source),
+            shuffle=True,
+            seed=42,
+            num_epochs=num_epochs,
+            shard_options=grain.ShardByJaxProcess(drop_remainder=True),
+        )
     else:
-        return transforms.Compose([
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-
-def get_numpy_batch(batch):
-    images, labels = batch
-    # PyTorch NCHW -> JAX NHWC
-    images_np = images.numpy().transpose(0, 2, 3, 1)
-    labels_np = labels.numpy()
-    return images_np, labels_np
+        sampler = grain.IndexSampler(
+            len(data_source),
+            shuffle=False,
+            num_epochs=1,
+            shard_options=grain.ShardByJaxProcess(drop_remainder=True),
+        )
+    
+    # Create transformations
+    transformations = [PreprocessOp(is_train=is_train)]
+    
+    # Create DataLoader
+    loader = grain.DataLoader(
+        data_source=data_source,
+        sampler=sampler,
+        operations=transformations,
+        worker_count=0,  # Use 0 for TPU to avoid multiprocessing overhead
+        worker_buffer_size=2,
+        read_options=grain.ReadOptions(
+            num_threads=1,
+            prefetch_buffer_size=batch_size * 2,
+        ),
+    )
+    
+    # Batch iterator
+    batch_iter = loader.batch(batch_size=batch_size, drop_remainder=True)
+    
+    return batch_iter
 
 # -----------------------------------------------------------------------------
 # 3. Training Step (NNX + Mesh)
@@ -238,12 +402,28 @@ def val_step(model, batch_images, batch_labels):
 # 4. Model Initialization Helper
 # -----------------------------------------------------------------------------
 
-@nnx.jit(static_argnames=('block_cls', 'layers', 'num_classes', 'dtype', 'lr', 'epochs'))
-def create_model_and_optimizer(block_cls, layers, num_classes, dtype, lr, epochs):
+@nnx.jit(static_argnames=('block_cls', 'layers', 'num_classes', 'dtype', 'lr', 'epochs',
+                     'tie_yat_kernels', 'yat_kernel_bank_size', 'yat_kernel_bank_id',
+                     'use_yat_head', 'tie_yat_nmn_kernels',
+                     'yat_nmn_kernel_bank_size', 'yat_nmn_kernel_bank_id'))
+def create_model_and_optimizer(block_cls, layers, num_classes, dtype, lr, epochs,
+                               tie_yat_kernels=False, yat_kernel_bank_size=None,
+                         yat_kernel_bank_id='resnet-yat',
+                         use_yat_head=True, tie_yat_nmn_kernels=False,
+                         yat_nmn_kernel_bank_size=None,
+                         yat_nmn_kernel_bank_id='resnet-yat-head'):
     rngs = nnx.Rngs(0)
     model = ResNet(
         block_cls=block_cls, layers=layers, num_classes=num_classes,
-        dtype=dtype, rngs=rngs
+        dtype=dtype,
+        tie_yat_kernels=tie_yat_kernels,
+        yat_kernel_bank_size=yat_kernel_bank_size,
+        yat_kernel_bank_id=yat_kernel_bank_id,
+        use_yat_head=use_yat_head,
+        tie_yat_nmn_kernels=tie_yat_nmn_kernels,
+        yat_nmn_kernel_bank_size=yat_nmn_kernel_bank_size,
+        yat_nmn_kernel_bank_id=yat_nmn_kernel_bank_id,
+        rngs=rngs
     )
     
     schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=epochs * 1000)
@@ -266,6 +446,20 @@ def main():
     parser.add_argument('--cache-dir', type=str, default=None, help='Directory to cache the dataset')
     parser.add_argument('--in-memory', action='store_true', help='Cache the dataset in RAM (keep_in_memory=True)')
     parser.add_argument('--streaming', action='store_true', help='Use streaming mode (default: False)')
+    parser.add_argument('--tie-yat-kernels', action='store_true',
+                        help='Tie YatConv kernels via shared banks and slice first k filters')
+    parser.add_argument('--yat-kernel-bank-size', type=int, default=None,
+                        help='Shared bank size for tied YatConv kernels (must be >= out_channels)')
+    parser.add_argument('--yat-kernel-bank-id', type=str, default='resnet-yat',
+                        help='Namespace/id for shared YatConv kernel banks')
+    parser.add_argument('--use-yat-head', action=argparse.BooleanOptionalAction, default=True,
+                        help='Use YatNMN classifier head instead of nnx.Linear')
+    parser.add_argument('--tie-yat-nmn-kernels', action='store_true',
+                        help='Tie YatNMN kernels via shared banks and slice first k neurons')
+    parser.add_argument('--yat-nmn-kernel-bank-size', type=int, default=None,
+                        help='Shared bank size for tied YatNMN kernels (must be >= out_features)')
+    parser.add_argument('--yat-nmn-kernel-bank-id', type=str, default='resnet-yat-head',
+                        help='Namespace/id for shared YatNMN kernel banks')
     
     # Checkpointing & Logging Args
     parser.add_argument('--save-dir', type=str, default='./checkpoints_flax')
@@ -348,7 +542,10 @@ def main():
     with mesh, nnx.logical_axis_rules(logical_axis_rules):
         model, optimizer = create_model_and_optimizer(
             block_cls, layers, 1000,
-            dtype, args.lr, args.epochs
+            dtype, args.lr, args.epochs,
+            args.tie_yat_kernels, args.yat_kernel_bank_size, args.yat_kernel_bank_id,
+            args.use_yat_head, args.tie_yat_nmn_kernels,
+            args.yat_nmn_kernel_bank_size, args.yat_nmn_kernel_bank_id
         )
 
     state = nnx.state((model, optimizer))
@@ -359,32 +556,67 @@ def main():
     # -------------------------------------------------------------------------
     # DATA
     # -------------------------------------------------------------------------
-    if args.streaming:
-        print("Using Streaming Dataset")
-        train_dataset = ImageNetStreamDataset(split='train', transform=get_transforms(True))
-        val_dataset = ImageNetStreamDataset(split='validation', transform=get_transforms(False))
-    else:
-        print(f"Using Map-Style Dataset (Cache: {args.cache_dir}, In-Memory: {args.in_memory})")
-        train_dataset = ImageNetMapDataset(split='train', transform=get_transforms(True), 
-                                           cache_dir=args.cache_dir, keep_in_memory=args.in_memory)
-        val_dataset = ImageNetMapDataset(split='validation', transform=get_transforms(False), 
-                                         cache_dir=args.cache_dir, keep_in_memory=args.in_memory)
-    
     if args.batch_size % num_devices != 0:
         raise ValueError(f"Batch size {args.batch_size} must be divisible by device count {num_devices}")
     
-    train_shuffle = not args.streaming
+    per_device_batch = args.batch_size // num_devices
     
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, 
-                              drop_last=True, shuffle=train_shuffle)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=args.num_workers, 
-                            drop_last=True, shuffle=False)
+    if GRAIN_AVAILABLE:
+        print("Using Grain DataLoader (optimized for TPU)")
+        train_loader = create_grain_dataloader(
+            split='train',
+            batch_size=per_device_batch,
+            is_train=True,
+            cache_dir=args.cache_dir,
+            num_epochs=args.epochs,
+        )
+        val_loader = create_grain_dataloader(
+            split='validation',
+            batch_size=per_device_batch,
+            is_train=False,
+            cache_dir=args.cache_dir,
+            num_epochs=None,
+        )
+    else:
+        print("WARNING: Grain not available, falling back to PyTorch DataLoader (slower on TPU)")
+        print(f"Install Grain with: pip install grain")
+        if args.streaming:
+            print("Using Streaming Dataset")
+            train_dataset = ImageNetStreamDataset(split='train', transform=get_transforms(True))
+            val_dataset = ImageNetStreamDataset(split='validation', transform=get_transforms(False))
+        else:
+            print(f"Using Map-Style Dataset (Cache: {args.cache_dir})")
+            train_dataset = ImageNetMapDataset(split='train', transform=get_transforms(True), 
+                                               cache_dir=args.cache_dir, keep_in_memory=args.in_memory)
+            val_dataset = ImageNetMapDataset(split='validation', transform=get_transforms(False), 
+                                             cache_dir=args.cache_dir, keep_in_memory=args.in_memory)
+        
+        train_shuffle = not args.streaming
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=0, 
+                                  drop_last=True, shuffle=train_shuffle)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=0, 
+                                drop_last=True, shuffle=False)
 
     # -------------------------------------------------------------------------
     # TRAINING LOOP
     # -------------------------------------------------------------------------
     best_acc = 0.0
     global_step = 0
+    
+    # Create sharding objects once (outside loop for efficiency)
+    data_sharding = NamedSharding(mesh, P('data', None, None, None))
+    label_sharding = NamedSharding(mesh, P('data'))
+    
+    # Helper to process batches
+    def process_batch(batch):
+        if GRAIN_AVAILABLE:
+            # Grain returns dict with 'image' and 'label'
+            imgs_np = np.stack([item['image'] for item in batch])
+            lbls_np = np.array([item['label'] for item in batch])
+        else:
+            # PyTorch DataLoader
+            imgs_np, lbls_np = get_numpy_batch(batch)
+        return imgs_np, lbls_np
     
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -394,10 +626,7 @@ def main():
         pbar = tqdm(train_loader, desc=f'Epoch {epoch}')
         for batch in pbar:
             global_step += 1
-            imgs_np, lbls_np = get_numpy_batch(batch)
-            
-            data_sharding = NamedSharding(mesh, P('data', None, None, None)) 
-            label_sharding = NamedSharding(mesh, P('data'))
+            imgs_np, lbls_np = process_batch(batch)
             
             imgs_sharded = jax.device_put(imgs_np, data_sharding)
             lbls_sharded = jax.device_put(lbls_np, label_sharding)
@@ -434,11 +663,7 @@ def main():
         total_acc = []
         total_loss = []
         for batch in tqdm(val_loader, desc='Val'):
-            imgs_np, lbls_np = get_numpy_batch(batch)
-            
-            # Re-define shardings inside loop or globally (locally here for safety with dynamic mesh)
-            data_sharding = NamedSharding(mesh, P('data', None, None, None)) 
-            label_sharding = NamedSharding(mesh, P('data'))
+            imgs_np, lbls_np = process_batch(batch)
             
             imgs_sharded = jax.device_put(imgs_np, data_sharding)
             lbls_sharded = jax.device_put(lbls_np, label_sharding)

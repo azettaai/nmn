@@ -90,10 +90,16 @@ class YatConv(Module):
         alpha_init: Alpha initializer (for learnable alpha).
         epsilon: Small constant for numerical stability.
         drop_rate: DropConnect rate (default: 0.0).
+        tie_kernel_bank: If True, reuse a shared kernel bank across compatible
+            YatConv instances and slice the first ``out_features`` filters.
+        kernel_bank_size: Total number of filters in the shared bank. If None,
+            defaults to ``out_features`` for the creating instance.
+        kernel_bank_id: Optional bank namespace to control sharing groups.
         rngs: Random number generators.
     """
 
     __data__ = ("kernel", "bias", "alpha", "mask", "dropconnect_key")
+    _KERNEL_BANKS: dict[tuple[tp.Any, ...], nnx.Param] = {}
 
     def __init__(
         self,
@@ -122,6 +128,9 @@ class YatConv(Module):
         promote_dtype: PromoteDtypeFn = dtypes.promote_dtype,
         epsilon: float = 1e-5,
         drop_rate: float = 0.0,
+        tie_kernel_bank: bool = False,
+        kernel_bank_size: tp.Optional[int] = None,
+        kernel_bank_id: str = "default",
         rngs: rnglib.Rngs,
     ):
         if isinstance(kernel_size, int):
@@ -133,11 +142,54 @@ class YatConv(Module):
             in_features // feature_group_count,
             out_features,
         )
-        kernel_key = rngs.params()
-        kernel_val = kernel_init(kernel_key, self.kernel_shape, param_dtype)
-        if positive_init:
-            kernel_val = jnp.abs(kernel_val)
-        self.kernel = nnx.Param(kernel_val)
+        self._tie_kernel_bank = tie_kernel_bank
+        self._kernel_slice = slice(None)
+
+        if tie_kernel_bank:
+            bank_out_features = kernel_bank_size or out_features
+            if bank_out_features < out_features:
+                raise ValueError(
+                    "kernel_bank_size must be >= out_features when tie_kernel_bank=True. "
+                    f"Got kernel_bank_size={bank_out_features}, out_features={out_features}."
+                )
+
+            bank_shape = kernel_size + (
+                in_features // feature_group_count,
+                bank_out_features,
+            )
+            bank_key = (
+                kernel_bank_id,
+                kernel_size,
+                in_features // feature_group_count,
+                feature_group_count,
+                param_dtype,
+                kernel_init,
+                positive_init,
+            )
+
+            shared_kernel = YatConv._KERNEL_BANKS.get(bank_key)
+            if shared_kernel is None:
+                kernel_key = rngs.params()
+                kernel_val = kernel_init(kernel_key, bank_shape, param_dtype)
+                if positive_init:
+                    kernel_val = jnp.abs(kernel_val)
+                shared_kernel = nnx.Param(kernel_val)
+                YatConv._KERNEL_BANKS[bank_key] = shared_kernel
+            elif shared_kernel.value.shape != bank_shape:
+                raise ValueError(
+                    "Shared kernel bank shape mismatch. "
+                    f"Existing shape={shared_kernel.value.shape}, requested shape={bank_shape}. "
+                    "Use a different kernel_bank_id or a consistent kernel_bank_size."
+                )
+
+            self.kernel = shared_kernel
+            self._kernel_slice = slice(0, out_features)
+        else:
+            kernel_key = rngs.params()
+            kernel_val = kernel_init(kernel_key, self.kernel_shape, param_dtype)
+            if positive_init:
+                kernel_val = jnp.abs(kernel_val)
+            self.kernel = nnx.Param(kernel_val)
 
         self.bias: nnx.Param[jax.Array] | None
         if use_bias:
@@ -187,6 +239,9 @@ class YatConv(Module):
         self.promote_dtype = promote_dtype
         self.epsilon = epsilon
         self.drop_rate = drop_rate
+        self.tie_kernel_bank = tie_kernel_bank
+        self.kernel_bank_size = kernel_bank_size
+        self.kernel_bank_id = kernel_bank_id
 
         if use_dropconnect:
             self.dropconnect_key = rngs.params()
@@ -259,6 +314,8 @@ class YatConv(Module):
         assert self.in_features % self.feature_group_count == 0
 
         kernel_val = self.kernel.value
+        if self._tie_kernel_bank:
+            kernel_val = kernel_val[..., self._kernel_slice]
 
         # Apply DropConnect if enabled
         if self.use_dropconnect and not deterministic and self.drop_rate > 0.0:
