@@ -122,12 +122,9 @@ class YatNMN(Module):
     self.kernel_shape = (in_features, out_features)
 
     if tie_kernel_bank:
+      # Auto-calculate bank size: use specified size or default to current layer's out_features
+      # Bank will auto-expand if a later layer needs more features
       bank_out_features = kernel_bank_size or out_features
-      if bank_out_features < out_features:
-        raise ValueError(
-          'kernel_bank_size must be >= out_features when tie_kernel_bank=True. '
-          f'Got kernel_bank_size={bank_out_features}, out_features={out_features}.'
-        )
 
       bank_shape = (in_features, bank_out_features)
       bank_key = (
@@ -140,18 +137,35 @@ class YatNMN(Module):
 
       shared_kernel = YatNMN._KERNEL_BANKS.get(bank_key)
       if shared_kernel is None:
+        # First layer using this bank: create with auto-sized dimensions
         kernel_key = rngs.params()
         kernel_val = kernel_init(kernel_key, bank_shape, param_dtype)
         if positive_init:
           kernel_val = jnp.abs(kernel_val)
         shared_kernel = nnx.Param(kernel_val)
         YatNMN._KERNEL_BANKS[bank_key] = shared_kernel
-      elif shared_kernel.value.shape != bank_shape:
-        raise ValueError(
-          'Shared kernel bank shape mismatch. '
-          f'Existing shape={shared_kernel.value.shape}, requested shape={bank_shape}. '
-          'Use a different kernel_bank_id or a consistent kernel_bank_size.'
-        )
+      else:
+        # Bank exists: auto-expand if needed
+        existing_shape = shared_kernel.value.shape
+        existing_bank_size = existing_shape[-1]
+        
+        if bank_out_features > existing_bank_size:
+          # Auto-expand bank to accommodate larger layer
+          print(f"Auto-expanding kernel bank '{kernel_bank_id}': "
+                f"{existing_bank_size} -> {bank_out_features} neurons")
+          new_shape = (in_features, bank_out_features)
+          old_kernel = shared_kernel.value
+          # Pad with random initialization for new neurons
+          kernel_key = rngs.params()
+          new_kernel_val = kernel_init(kernel_key, new_shape, param_dtype)
+          if positive_init:
+            new_kernel_val = jnp.abs(new_kernel_val)
+          # Copy old values, new neurons already initialized
+          new_kernel_val = new_kernel_val.at[:, :existing_bank_size].set(old_kernel)
+          shared_kernel.value = new_kernel_val
+        elif bank_out_features < existing_bank_size:
+          # Bank is already larger, just use a slice
+          pass
 
       self.kernel = shared_kernel
       self._kernel_slice = slice(0, out_features)
