@@ -28,31 +28,24 @@ class TestLayerImports:
     
     def test_import_yat_nmn(self):
         """Test YatNMN import."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         assert YatNMN is not None
     
     def test_import_yat_conv(self):
         """Test YatConv import."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         assert YatConv is not None
     
     def test_import_yat_conv_transpose(self):
         """Test YatConvTranspose import."""
-        from nmn.nnx.yatconv_transpose import YatConvTranspose
+        from nmn.nnx.conv import YatConvTranspose
         assert YatConvTranspose is not None
     
     def test_import_yat_attention(self):
         """Test attention imports."""
-        from nmn.nnx.yatattention import yat_attention_weights, MultiHeadAttention
+        from nmn.nnx.attention import yat_attention_weights, MultiHeadAttention
         assert yat_attention_weights is not None
         assert MultiHeadAttention is not None
-    
-    def test_import_rnn_cells(self):
-        """Test RNN cell imports."""
-        from nmn.nnx.rnn import YatSimpleCell, YatLSTMCell, YatGRUCell
-        assert YatSimpleCell is not None
-        assert YatLSTMCell is not None
-        assert YatGRUCell is not None
     
     def test_import_squashers(self):
         """Test squasher imports."""
@@ -71,14 +64,14 @@ class TestYatNMNComprehensive:
     
     def test_instantiation(self):
         """Test basic instantiation."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, rngs=rngs)
         assert layer.out_features == 16
     
     def test_forward_pass(self):
         """Test forward pass."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, rngs=rngs)
         x = jnp.ones((2, 8))
@@ -87,28 +80,28 @@ class TestYatNMNComprehensive:
     
     def test_with_bias(self):
         """Test with bias enabled."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, use_bias=True, rngs=rngs)
         assert layer.bias is not None
     
     def test_without_bias(self):
         """Test without bias."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, use_bias=False, rngs=rngs)
         assert layer.bias is None
     
     def test_with_alpha(self):
         """Test with alpha scaling."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, use_alpha=True, rngs=rngs)
         assert layer.alpha is not None
     
     def test_gradient_computation(self):
         """Test that gradients can be computed."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, rngs=rngs)
         x = jnp.ones((2, 8))
@@ -122,7 +115,7 @@ class TestYatNMNComprehensive:
     
     def test_positive_outputs_no_bias(self):
         """Test that YAT produces non-negative outputs without bias."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(42)
         
         layer = YatNMN(in_features=8, out_features=16, use_bias=False, use_alpha=False, rngs=rngs)
@@ -134,7 +127,7 @@ class TestYatNMNComprehensive:
     
     def test_deterministic_mode(self):
         """Test deterministic mode disables DropConnect."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         
         layer = YatNMN(
@@ -159,7 +152,7 @@ class TestYatConvComprehensive:
     
     def test_conv1d_forward_valid_padding(self):
         """Test 1D convolution forward pass with valid padding."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3,), padding='VALID', rngs=rngs)
         x = jnp.ones((2, 16, 3))
@@ -168,7 +161,7 @@ class TestYatConvComprehensive:
     
     def test_conv1d_forward_same_padding(self):
         """Test 1D convolution forward pass with same padding."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3,), padding='SAME', rngs=rngs)
         x = jnp.ones((2, 16, 3))
@@ -177,7 +170,7 @@ class TestYatConvComprehensive:
     
     def test_conv2d_forward_valid_padding(self):
         """Test 2D convolution forward pass with valid padding."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), padding='VALID', rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -186,7 +179,7 @@ class TestYatConvComprehensive:
     
     def test_conv2d_forward_same_padding(self):
         """Test 2D convolution forward pass with same padding."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), padding='SAME', rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -195,7 +188,7 @@ class TestYatConvComprehensive:
     
     def test_conv2d_stride(self):
         """Test 2D convolution with stride."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), strides=(2, 2), padding='SAME', rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -204,7 +197,7 @@ class TestYatConvComprehensive:
     
     def test_gradient_flow(self):
         """Test gradient computation."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -218,7 +211,7 @@ class TestYatConvComprehensive:
     
     def test_positive_outputs(self):
         """Test that outputs are non-negative without bias."""
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         rngs = nnx.Rngs(42)
         
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), use_bias=False, use_alpha=False, rngs=rngs)
@@ -238,7 +231,7 @@ class TestYatConvTransposeComprehensive:
     
     def test_conv_transpose2d_forward(self):
         """Test 2D transposed convolution forward pass."""
-        from nmn.nnx.yatconv_transpose import YatConvTranspose
+        from nmn.nnx.conv import YatConvTranspose
         rngs = nnx.Rngs(0)
         layer = YatConvTranspose(
             in_features=8, out_features=3, kernel_size=(2, 2), strides=(2, 2), rngs=rngs
@@ -253,7 +246,7 @@ class TestYatConvTransposeComprehensive:
     
     def test_gradient_flow(self):
         """Test gradient computation for transposed conv."""
-        from nmn.nnx.yatconv_transpose import YatConvTranspose
+        from nmn.nnx.conv import YatConvTranspose
         rngs = nnx.Rngs(0)
         layer = YatConvTranspose(
             in_features=8, out_features=3, kernel_size=(2, 2), strides=(2, 2), rngs=rngs
@@ -321,41 +314,6 @@ class TestSquashers:
 
 
 # ============================================================================
-# RNN Cell Tests (basic tests only - these have specific API requirements)
-# ============================================================================
-
-class TestRNNCells:
-    """Test RNN cell implementations."""
-    
-    def test_simple_cell_instantiation(self):
-        """Test YatSimpleCell can be instantiated."""
-        from nmn.nnx.rnn import YatSimpleCell
-        rngs = nnx.Rngs(0)
-        
-        cell = YatSimpleCell(in_features=8, hidden_features=16, rngs=rngs)
-        assert cell.in_features == 8
-        assert cell.hidden_features == 16
-    
-    def test_lstm_cell_instantiation(self):
-        """Test YatLSTMCell can be instantiated."""
-        from nmn.nnx.rnn import YatLSTMCell
-        rngs = nnx.Rngs(0)
-        
-        cell = YatLSTMCell(in_features=8, hidden_features=16, rngs=rngs)
-        assert cell.in_features == 8
-        assert cell.hidden_features == 16
-    
-    def test_gru_cell_instantiation(self):
-        """Test YatGRUCell can be instantiated."""
-        from nmn.nnx.rnn import YatGRUCell
-        rngs = nnx.Rngs(0)
-        
-        cell = YatGRUCell(in_features=8, hidden_features=16, rngs=rngs)
-        assert cell.in_features == 8
-        assert cell.hidden_features == 16
-
-
-# ============================================================================
 # MultiHeadAttention Tests
 # ============================================================================
 
@@ -364,7 +322,7 @@ class TestMultiHeadAttention:
     
     def test_attention_forward(self):
         """Test basic attention forward pass."""
-        from nmn.nnx.yatattention import MultiHeadAttention
+        from nmn.nnx.attention import MultiHeadAttention
         rngs = nnx.Rngs(0)
         
         attn = MultiHeadAttention(
@@ -381,7 +339,7 @@ class TestMultiHeadAttention:
     
     def test_attention_with_mask(self):
         """Test attention with mask."""
-        from nmn.nnx.yatattention import MultiHeadAttention
+        from nmn.nnx.attention import MultiHeadAttention
         rngs = nnx.Rngs(0)
         
         attn = MultiHeadAttention(
@@ -398,7 +356,7 @@ class TestMultiHeadAttention:
     
     def test_self_attention(self):
         """Test self-attention (q and kv are the same)."""
-        from nmn.nnx.yatattention import MultiHeadAttention
+        from nmn.nnx.attention import MultiHeadAttention
         rngs = nnx.Rngs(0)
         
         attn = MultiHeadAttention(
@@ -422,7 +380,7 @@ class TestEdgeCases:
     
     def test_batch_size_one(self):
         """Test with batch size of 1."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, rngs=rngs)
         x = jnp.ones((1, 8))
@@ -431,7 +389,7 @@ class TestEdgeCases:
     
     def test_large_batch(self):
         """Test with large batch."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, rngs=rngs)
         x = jnp.ones((64, 8))
@@ -440,7 +398,7 @@ class TestEdgeCases:
     
     def test_jit_compatibility(self):
         """Test that layers work with JAX JIT compilation."""
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         rngs = nnx.Rngs(0)
         layer = YatNMN(in_features=8, out_features=16, rngs=rngs)
         

@@ -10,7 +10,7 @@ def test_nnx_import():
         import jax
         import flax.nnx as nnx
         from nmn.nnx import nmn
-        from nmn.nnx import yatconv
+        # Old import removed - use nmn.nnx.conv instead
         assert True
     except ImportError as e:
         pytest.skip(f"NNX dependencies not available: {e}")
@@ -22,7 +22,7 @@ def test_yat_nmn_basic():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         
         # Test parameters
         in_features, out_features = 3, 4
@@ -52,7 +52,7 @@ def test_yat_conv_basic():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         
         # Test parameters
         in_channels, out_channels = 3, 8

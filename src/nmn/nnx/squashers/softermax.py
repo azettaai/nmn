@@ -34,6 +34,14 @@ def softermax(
 
     Returns:
         Array: The normalized scores.
+
+    Example:
+        >>> import jax.numpy as jnp
+        >>> from nmn.nnx.squashers import softermax
+        >>> x = jnp.array([[1.0, 2.0], [3.0, 4.0]])
+        >>> softermax(x)
+        Array([[0.26894143, 0.73105857],
+               [0.26894143, 0.73105857]], dtype=float32)
     """
     if n <= 0:
         raise ValueError("Power 'n' must be positive.")

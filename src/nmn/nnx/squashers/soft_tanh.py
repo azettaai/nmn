@@ -1,6 +1,12 @@
+from functools import partial
+from typing import Optional
+
+import jax
 import jax.numpy as jnp
 from jax import Array
 
+
+@partial(jax.jit, static_argnames=("n",))
 def soft_tanh(
     x: Array,
     n: float = 1.0,
@@ -21,6 +27,13 @@ def soft_tanh(
 
     Returns:
         Array: The mapped scores in the range [-1, 1).
+
+    Example:
+        >>> import jax.numpy as jnp
+        >>> from nmn.nnx.squashers import soft_tanh
+        >>> x = jnp.array([0.0, 1.0, 2.0])
+        >>> soft_tanh(x, n=1.0)
+        Array([-1.        ,  0.        ,  0.33333334], dtype=float32)
     """
     if n <= 0:
         raise ValueError("Power 'n' must be positive.")

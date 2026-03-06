@@ -1,6 +1,12 @@
+from functools import partial
+from typing import Optional
+
+import jax
 import jax.numpy as jnp
 from jax import Array
 
+
+@partial(jax.jit, static_argnames=("n",))
 def softer_sigmoid(
     x: Array,
     n: float = 1.0,
@@ -21,6 +27,13 @@ def softer_sigmoid(
 
     Returns:
         Array: The squashed scores in the range [0, 1).
+
+    Example:
+        >>> import jax.numpy as jnp
+        >>> from nmn.nnx.squashers import softer_sigmoid
+        >>> x = jnp.array([0.0, 1.0, 2.0])
+        >>> softer_sigmoid(x, n=1.0)
+        Array([0.       , 0.5      , 0.6666667], dtype=float32)
     """
     if n <= 0:
         raise ValueError("Power 'n' must be positive.")

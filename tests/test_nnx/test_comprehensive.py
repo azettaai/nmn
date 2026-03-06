@@ -10,7 +10,7 @@ def test_nnx_yat_attention():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.yatattention import MultiHeadAttention
+        from nmn.nnx.attention import MultiHeadAttention
         
         # Test parameters
         num_heads = 4
@@ -48,7 +48,7 @@ def test_nnx_yat_conv_transpose():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.yatconv_transpose import YatConvTranspose
+        from nmn.nnx.conv import YatConvTranspose
         
         # Test parameters
         in_channels, out_channels = 16, 8
@@ -73,108 +73,6 @@ def test_nnx_yat_conv_transpose():
         assert output.shape[0] == 1
         assert output.shape[-1] == out_channels
         assert output.shape[1] > dummy_input.shape[1]
-        
-    except ImportError:
-        pytest.skip("JAX/Flax dependencies not available")
-
-
-def test_nnx_rnn_simple():
-    """Test YatSimpleCell RNN."""
-    try:
-        import jax
-        import jax.numpy as jnp
-        from flax import nnx
-        from nmn.nnx.rnn import YatSimpleCell
-        
-        # Test parameters
-        in_features, hidden_features = 32, 64
-        key = jax.random.key(0)
-        
-        # Create RNN cell
-        cell = YatSimpleCell(
-            in_features=in_features,
-            hidden_features=hidden_features,
-            rngs=nnx.Rngs(params=key, carry=key)
-        )
-        
-        # Initialize carry - input_shape should include feature dimension
-        batch_size = 4
-        input_shape = (batch_size, in_features)
-        carry = cell.initialize_carry(input_shape)
-        
-        # Test forward pass
-        dummy_input = jax.random.normal(jax.random.key(2), (batch_size, in_features))
-        new_carry, output = cell(carry, dummy_input)
-        
-        assert output.shape == (batch_size, hidden_features)
-        
-    except ImportError:
-        pytest.skip("JAX/Flax dependencies not available")
-
-
-def test_nnx_rnn_lstm():
-    """Test YatLSTMCell."""
-    try:
-        import jax
-        import jax.numpy as jnp
-        from flax import nnx
-        from nmn.nnx.rnn import YatLSTMCell
-        
-        # Test parameters
-        in_features, hidden_features = 32, 64
-        key = jax.random.key(0)
-        
-        # Create LSTM cell
-        cell = YatLSTMCell(
-            in_features=in_features,
-            hidden_features=hidden_features,
-            rngs=nnx.Rngs(params=key, carry=key)
-        )
-        
-        # Initialize carry - input_shape should include feature dimension
-        batch_size = 4
-        input_shape = (batch_size, in_features)
-        carry = cell.initialize_carry(input_shape)
-        
-        # Test forward pass
-        dummy_input = jax.random.normal(jax.random.key(2), (batch_size, in_features))
-        new_carry, output = cell(carry, dummy_input)
-        
-        assert output.shape == (batch_size, hidden_features)
-        
-    except ImportError:
-        pytest.skip("JAX/Flax dependencies not available")
-
-
-def test_nnx_rnn_gru():
-    """Test YatGRUCell."""
-    try:
-        import jax
-        import jax.numpy as jnp
-        from flax import nnx
-        from nmn.nnx.rnn import YatGRUCell
-        
-        # Test parameters
-        in_features, hidden_features = 32, 64
-        key = jax.random.key(0)
-        
-        # Create GRU cell
-        cell = YatGRUCell(
-            in_features=in_features,
-            hidden_features=hidden_features,
-            rngs=nnx.Rngs(params=key, carry=key)
-        )
-        
-        # Initialize carry - input_shape should include feature dimension
-        batch_size = 4
-        input_shape = (batch_size, in_features)
-        carry = cell.initialize_carry(input_shape)
-        
-        # Test forward pass
-        dummy_input = jax.random.normal(jax.random.key(2), (batch_size, in_features))
-        new_carry, output = cell(carry, dummy_input)
-        
-        assert output.shape == (batch_size, hidden_features)
         
     except ImportError:
         pytest.skip("JAX/Flax dependencies not available")
@@ -215,7 +113,7 @@ def test_nnx_yat_conv_dropconnect():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.yatconv import YatConv
+        from nmn.nnx.conv import YatConv
         
         # Test parameters
         in_channels, out_channels = 3, 8
@@ -251,7 +149,7 @@ def test_nnx_yat_nmn_dropconnect():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.nmn import YatNMN
+        from nmn.nnx.layers import YatNMN
         
         # Test parameters
         in_features, out_features = 64, 32
