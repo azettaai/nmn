@@ -9,7 +9,7 @@ where * denotes the convolution operation, and the distance is computed
 patch-wise between input patches and kernel weights.
 
 Example:
-    >>> from nmn.nnx.conv import YatConv, YatConvTranspose
+    >>> from nmn.nnx.layers.conv import YatConv, YatConvTranspose
     >>> from flax import nnx
     >>> import jax.numpy as jnp
     >>>

@@ -52,7 +52,7 @@ pip install -e ".[gpu]"
 import jax
 import jax.numpy as jnp
 from flax import nnx
-from nmn.nnx.conv import YatConv
+from nmn.nnx.layers.conv import YatConv
 
 # Initialize RNG
 rngs = nnx.Rngs(0)
@@ -104,7 +104,7 @@ where $\ast$ denotes convolution and distances are computed patch-wise.
 **Supports arbitrary dimensions** (1D, 2D, 3D, etc.) through `kernel_size` parameter.
 
 ```python
-from nmn.nnx.conv import YatConv
+from nmn.nnx.layers.conv import YatConv
 
 # 2D Convolution for images
 conv2d = YatConv(
@@ -191,7 +191,7 @@ Normalize each neuron/filter to have unit L2-norm. This provides:
 3. **JIT optimization**: More predictable computation for XLA compiler
 
 ```python
-from nmn.nnx.conv import YatConv
+from nmn.nnx.layers.conv import YatConv
 from nmn.nnx import YatNMN
 
 # Enable weight normalization for convolution
@@ -237,7 +237,7 @@ Share kernel parameters across multiple layers to **reduce model size** and **en
 - **Namespace isolation**: Multiple independent banks via `kernel_bank_id`
 
 ```python
-from nmn.nnx.conv import YatConv
+from nmn.nnx.layers.conv import YatConv
 
 rngs = nnx.Rngs(0)
 
@@ -445,7 +445,7 @@ output = layer(x, deterministic=True)   # Disables dropout
 Build highly optimized models combining multiple features:
 
 ```python
-from nmn.nnx.conv import YatConv
+from nmn.nnx.layers.conv import YatConv
 from nmn.nnx import YatNMN
 from flax import nnx
 import jax.numpy as jnp
@@ -565,7 +565,7 @@ import jax
 import jax.numpy as jnp
 import optax
 from flax import nnx
-from nmn.nnx.conv import YatConv
+from nmn.nnx.layers.conv import YatConv
 from nmn.nnx import YatNMN
 
 # Model definition

@@ -72,7 +72,7 @@ from nmn.nnx.layers import YatNMN, Embed
 # Convolution Layers
 # =============================================================================
 
-from nmn.nnx.conv import (
+from nmn.nnx.layers import (
     # Layers
     YatConv,
     YatConvTranspose,
@@ -82,7 +82,7 @@ from nmn.nnx.conv import (
     default_kernel_init,
     default_bias_init,
     default_alpha_init,
-    DEFAULT_CONSTANT_ALPHA as CONV_DEFAULT_CONSTANT_ALPHA,
+    CONV_DEFAULT_CONSTANT_ALPHA,
 )
 
 
@@ -91,13 +91,13 @@ from nmn.nnx.conv import (
 # =============================================================================
 
 # Multi-Head Attention Module
-from nmn.nnx.attention import (
+from nmn.nnx.layers import (
     MultiHeadAttention,
-    DEFAULT_CONSTANT_ALPHA as ATTENTION_DEFAULT_CONSTANT_ALPHA,
+    ATTENTION_DEFAULT_CONSTANT_ALPHA,
 )
 
 # YAT Attention Functions
-from nmn.nnx.attention import (
+from nmn.nnx.layers import (
     yat_attention,
     yat_attention_weights,
     yat_attention_normalized,
@@ -108,7 +108,7 @@ from nmn.nnx.attention import (
 )
 
 # Rotary YAT Attention (RoPE + YAT)
-from nmn.nnx.attention import (
+from nmn.nnx.layers import (
     RotaryYatAttention,
     rotary_yat_attention,
     rotary_yat_attention_weights,
@@ -118,20 +118,20 @@ from nmn.nnx.attention import (
 )
 
 # Spherical YAT-Performer (Linear Complexity)
-from nmn.nnx.attention import (
+from nmn.nnx.layers import (
     yat_tp_attention,
     yat_tp_features,
     create_yat_tp_projection,
 )
 
 # Standard Dot-Product Attention
-from nmn.nnx.attention import (
+from nmn.nnx.layers import (
     dot_product_attention,
     dot_product_attention_weights,
 )
 
 # Attention Masks
-from nmn.nnx.attention import (
+from nmn.nnx.layers import (
     make_attention_mask,
     make_causal_mask,
     combine_masks,
@@ -143,7 +143,7 @@ from nmn.nnx.attention import (
 # Activation Functions
 # =============================================================================
 
-from nmn.nnx.squashers import (
+from nmn.nnx.layers import (
     softermax,
     softer_sigmoid,
     soft_tanh,

@@ -52,7 +52,7 @@ def test_yat_conv_basic():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         
         # Test parameters
         in_channels, out_channels = 3, 8

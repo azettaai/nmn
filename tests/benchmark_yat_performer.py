@@ -23,14 +23,14 @@ try:
 except:
     HAS_GPU = False
 
-from nmn.nnx.attention import RotaryYatAttention
-from nmn.nnx.attention.yat_attention import yat_attention, normalize_qk
-from nmn.nnx.attention.spherical_yat_performer import (
+from nmn.nnx.layers.attention import RotaryYatAttention
+from nmn.nnx.layers.attention.yat_attention import yat_attention, normalize_qk
+from nmn.nnx.layers.attention.spherical_yat_performer import (
     yat_tp_attention,
     create_yat_tp_projection,
     yat_tp_features,
 )
-from nmn.nnx.attention.yat_attention import yat_attention_weights
+from nmn.nnx.layers.attention.yat_attention import yat_attention_weights
 
 
 def print_header(title):

@@ -58,7 +58,7 @@ from .spherical_yat_performer import (
 )
 from .multi_head import DEFAULT_CONSTANT_ALPHA
 from .masks import combine_masks
-from nmn.nnx.squashers import softermax
+from nmn.nnx.layers.squashers import softermax
 
 
 def precompute_freqs_cis(

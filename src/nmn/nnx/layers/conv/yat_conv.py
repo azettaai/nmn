@@ -52,7 +52,7 @@ class YatConv(Module):
     Example usage::
 
         >>> from flax import nnx
-        >>> from nmn.nnx.conv import YatConv
+        >>> from nmn.nnx.layers.conv import YatConv
         >>> import jax.numpy as jnp
 
         >>> rngs = nnx.Rngs(0)

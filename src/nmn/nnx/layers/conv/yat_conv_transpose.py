@@ -50,7 +50,7 @@ class YatConvTranspose(Module):
     Example usage::
 
         >>> from flax import nnx
-        >>> from nmn.nnx.conv import YatConvTranspose
+        >>> from nmn.nnx.layers.conv import YatConvTranspose
         >>> import jax.numpy as jnp
 
         >>> rngs = nnx.Rngs(0)

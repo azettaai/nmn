@@ -10,7 +10,7 @@ including softermax, softer_sigmoid, and soft_tanh. These functions are:
 
 Usage with NNX:
     >>> from flax import nnx
-    >>> from nmn.nnx.squashers import softermax, softer_sigmoid, soft_tanh
+    >>> from nmn.nnx.layers.squashers import softermax, softer_sigmoid, soft_tanh
     >>> import jax.numpy as jnp
     >>>
     >>> # Use in a forward pass

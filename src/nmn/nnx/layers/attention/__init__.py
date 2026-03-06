@@ -27,7 +27,7 @@ Standard Attention:
     The classic scaled dot-product attention from "Attention Is All You Need".
 
 Example:
-    >>> from nmn.nnx.attention import MultiHeadAttention, yat_attention
+    >>> from nmn.nnx.layers.attention import MultiHeadAttention, yat_attention
     >>> from flax import nnx
     >>> import jax.numpy as jnp
     >>>

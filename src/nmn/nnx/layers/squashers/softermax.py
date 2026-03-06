@@ -37,7 +37,7 @@ def softermax(
 
     Example:
         >>> import jax.numpy as jnp
-        >>> from nmn.nnx.squashers import softermax
+        >>> from nmn.nnx.layers.squashers import softermax
         >>> x = jnp.array([[1.0, 2.0], [3.0, 4.0]])
         >>> softermax(x)
         Array([[0.26894143, 0.73105857],

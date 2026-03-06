@@ -25,7 +25,7 @@ class TestYatAttentionAlpha:
     
     def test_yat_attention_weights_with_alpha(self):
         """Test that alpha scaling is applied to attention weights."""
-        from nmn.nnx.attention import yat_attention_weights
+        from nmn.nnx.layers.attention import yat_attention_weights
         
         key = jax.random.key(0)
         batch, seq_len, num_heads, head_dim = 2, 8, 4, 32
@@ -62,7 +62,7 @@ class TestYatAttentionAlpha:
     
     def test_yat_attention_with_alpha(self):
         """Test full YAT attention with alpha scaling."""
-        from nmn.nnx.attention import yat_attention
+        from nmn.nnx.layers.attention import yat_attention
         
         key = jax.random.key(0)
         batch, seq_len, num_heads, head_dim = 2, 8, 4, 32
@@ -90,7 +90,7 @@ class TestYatAttentionAlpha:
     
     def test_yat_attention_normalized_with_alpha(self):
         """Test normalized YAT attention with alpha scaling."""
-        from nmn.nnx.attention import yat_attention_normalized
+        from nmn.nnx.layers.attention import yat_attention_normalized
         
         key = jax.random.key(0)
         batch, seq_len, num_heads, head_dim = 2, 8, 4, 32
@@ -115,7 +115,7 @@ class TestYatAttentionAlpha:
     
     def test_yat_performer_attention_with_alpha(self):
         """Test YAT Performer attention with alpha scaling."""
-        from nmn.nnx.attention import yat_performer_attention, create_yat_projection
+        from nmn.nnx.layers.attention import yat_performer_attention, create_yat_projection
         
         key = jax.random.key(0)
         batch, seq_len, num_heads, head_dim = 2, 8, 4, 32
@@ -146,7 +146,7 @@ class TestMultiHeadAttentionAlpha:
     
     def test_multihead_attention_learnable_alpha(self):
         """Test MultiHeadAttention with learnable alpha (default)."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         
         rngs = nnx.Rngs(0)
         num_heads = 4
@@ -177,7 +177,7 @@ class TestMultiHeadAttentionAlpha:
     
     def test_multihead_attention_constant_alpha_true(self):
         """Test MultiHeadAttention with constant_alpha=True (sqrt(2))."""
-        from nmn.nnx.attention import MultiHeadAttention, DEFAULT_CONSTANT_ALPHA
+        from nmn.nnx.layers.attention import MultiHeadAttention, DEFAULT_CONSTANT_ALPHA
         
         rngs = nnx.Rngs(0)
         num_heads = 4
@@ -209,7 +209,7 @@ class TestMultiHeadAttentionAlpha:
     
     def test_multihead_attention_constant_alpha_custom(self):
         """Test MultiHeadAttention with custom constant alpha value."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         
         rngs = nnx.Rngs(0)
         num_heads = 4
@@ -242,7 +242,7 @@ class TestMultiHeadAttentionAlpha:
     
     def test_multihead_attention_no_alpha(self):
         """Test MultiHeadAttention with use_alpha=False."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         
         rngs = nnx.Rngs(0)
         num_heads = 4
@@ -274,7 +274,7 @@ class TestMultiHeadAttentionAlpha:
     
     def test_alpha_affects_output(self):
         """Test that different alpha values produce different outputs."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         
         num_heads = 4
         in_features = 64
@@ -325,7 +325,7 @@ class TestAlphaGradients:
     
     def test_learnable_alpha_gradients(self):
         """Test that gradients flow through learnable alpha."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         
         rngs = nnx.Rngs(0)
         num_heads = 4
@@ -359,7 +359,7 @@ class TestAlphaGradients:
     
     def test_constant_alpha_no_gradients(self):
         """Test that constant alpha has no gradients (as expected)."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         
         rngs = nnx.Rngs(0)
         num_heads = 4
@@ -395,7 +395,7 @@ class TestRotaryYatAttentionAlpha:
     
     def test_rotary_yat_attention_learnable_alpha(self):
         """Test RotaryYatAttention with learnable alpha (default)."""
-        from nmn.nnx.attention import RotaryYatAttention
+        from nmn.nnx.layers.attention import RotaryYatAttention
         
         rngs = nnx.Rngs(0)
         embed_dim = 64
@@ -424,7 +424,7 @@ class TestRotaryYatAttentionAlpha:
     
     def test_rotary_yat_attention_constant_alpha(self):
         """Test RotaryYatAttention with constant_alpha=True."""
-        from nmn.nnx.attention import RotaryYatAttention
+        from nmn.nnx.layers.attention import RotaryYatAttention
         
         rngs = nnx.Rngs(0)
         embed_dim = 64
@@ -454,7 +454,7 @@ class TestRotaryYatAttentionAlpha:
     
     def test_rotary_yat_performer_with_alpha(self):
         """Test RotaryYatAttention in Performer mode with alpha."""
-        from nmn.nnx.attention import RotaryYatAttention
+        from nmn.nnx.layers.attention import RotaryYatAttention
         
         rngs = nnx.Rngs(0)
         embed_dim = 64
@@ -486,7 +486,7 @@ class TestRotaryYatAttentionAlpha:
     
     def test_rotary_yat_no_alpha(self):
         """Test RotaryYatAttention with use_alpha=False."""
-        from nmn.nnx.attention import RotaryYatAttention
+        from nmn.nnx.layers.attention import RotaryYatAttention
         
         rngs = nnx.Rngs(0)
         embed_dim = 64

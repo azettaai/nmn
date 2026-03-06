@@ -135,7 +135,7 @@ class AttentionBenchmarks:
         self.x = jax.random.normal(key, (BATCH_SIZE, seq_len, EMBED_DIM))
         
         # Precompute projections
-        from nmn.nnx.attention import create_yat_projection, precompute_freqs_cis
+        from nmn.nnx.layers.attention import create_yat_projection, precompute_freqs_cis
         self.projection = create_yat_projection(key, NUM_FEATURES, HEAD_DIM)
         self.freqs_cos, self.freqs_sin = precompute_freqs_cis(HEAD_DIM, seq_len)
         
@@ -144,7 +144,7 @@ class AttentionBenchmarks:
     
     def _create_modules(self):
         """Creates attention modules."""
-        from nmn.nnx.attention import RotaryYatAttention
+        from nmn.nnx.layers.attention import RotaryYatAttention
         
         # Rotary YAT (standard quadratic)
         self.rotary_yat = RotaryYatAttention(
@@ -179,7 +179,7 @@ class AttentionBenchmarks:
     
     def benchmark_yat_attention(self) -> Tuple[float, float]:
         """Benchmarks standard YAT attention."""
-        from nmn.nnx.attention import yat_attention
+        from nmn.nnx.layers.attention import yat_attention
         
         @jax.jit
         def fn(q, k, v):
@@ -189,7 +189,7 @@ class AttentionBenchmarks:
     
     def benchmark_yat_attention_normalized(self) -> Tuple[float, float]:
         """Benchmarks normalized YAT attention."""
-        from nmn.nnx.attention import yat_attention_normalized
+        from nmn.nnx.layers.attention import yat_attention_normalized
         
         @jax.jit
         def fn(q, k, v):
@@ -199,7 +199,7 @@ class AttentionBenchmarks:
     
     def benchmark_yat_performer(self) -> Tuple[float, float]:
         """Benchmarks YAT Performer attention."""
-        from nmn.nnx.attention import yat_performer_attention
+        from nmn.nnx.layers.attention import yat_performer_attention
         
         @jax.jit
         def fn(q, k, v, proj):
@@ -209,7 +209,7 @@ class AttentionBenchmarks:
     
     def benchmark_yat_performer_normalized(self) -> Tuple[float, float]:
         """Benchmarks YAT Performer with normalization."""
-        from nmn.nnx.attention import yat_performer_attention
+        from nmn.nnx.layers.attention import yat_performer_attention
         
         @jax.jit
         def fn(q, k, v, proj):
@@ -243,7 +243,7 @@ class AttentionBenchmarks:
     
     def benchmark_dot_product_attention(self) -> Tuple[float, float]:
         """Benchmarks standard dot-product attention (baseline)."""
-        from nmn.nnx.attention import dot_product_attention
+        from nmn.nnx.layers.attention import dot_product_attention
         
         @jax.jit
         def fn(q, k, v):
@@ -437,7 +437,7 @@ class TestAttentionCorrectness:
     
     def test_all_attention_outputs_valid(self):
         """Tests that all attention types produce valid (non-NaN) outputs."""
-        from nmn.nnx.attention import (
+        from nmn.nnx.layers.attention import (
             yat_attention,
             yat_attention_normalized,
             yat_performer_attention,
@@ -526,7 +526,7 @@ class TestScalingAnalysis:
     
     def test_scaling_analysis(self):
         """Calculates and displays scaling factors."""
-        from nmn.nnx.attention import (
+        from nmn.nnx.layers.attention import (
             yat_attention,
             yat_performer_attention,
             create_yat_projection,
@@ -596,7 +596,7 @@ class TestLongSequences:
     @pytest.mark.slow
     def test_long_sequence_performer(self):
         """Tests that Performer can handle very long sequences."""
-        from nmn.nnx.attention import RotaryYatAttention
+        from nmn.nnx.layers.attention import RotaryYatAttention
         
         print("\n" + "=" * 80)
         print("LONG SEQUENCE TEST (Performer)")

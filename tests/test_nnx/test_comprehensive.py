@@ -10,7 +10,7 @@ def test_nnx_yat_attention():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         
         # Test parameters
         num_heads = 4
@@ -48,7 +48,7 @@ def test_nnx_yat_conv_transpose():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.conv import YatConvTranspose
+        from nmn.nnx.layers.conv import YatConvTranspose
         
         # Test parameters
         in_channels, out_channels = 16, 8
@@ -83,7 +83,7 @@ def test_nnx_squashers():
     try:
         import jax
         import jax.numpy as jnp
-        from nmn.nnx.squashers import softermax, softer_sigmoid, soft_tanh
+        from nmn.nnx.layers.squashers import softermax, softer_sigmoid, soft_tanh
         
         # Test data
         x = jnp.array([1.0, 2.0, 3.0, 4.0])
@@ -113,7 +113,7 @@ def test_nnx_yat_conv_dropconnect():
         import jax
         import jax.numpy as jnp
         from flax import nnx
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         
         # Test parameters
         in_channels, out_channels = 3, 8

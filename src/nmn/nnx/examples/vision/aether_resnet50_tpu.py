@@ -30,8 +30,8 @@ except ImportError:
 from datasets import load_dataset
 from tqdm import tqdm
 import numpy as np
-from nmn.nnx.conv import YatConv
-from nmn.nnx.nmn import YatNMN
+from nmn.nnx.layers.conv import YatConv
+from nmn.nnx.layers import YatNMN
 
 # Training Monitor
 try:

@@ -16,8 +16,8 @@ from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from mteb import MTEB, get_tasks
 from tokenizers import Tokenizer
-from nmn.nnx.nmn import YatNMN
-from nmn.nnx.attention import RotaryYatAttention
+from nmn.nnx.layers import YatNMN
+from nmn.nnx.layers.attention import RotaryYatAttention
 
 # --- JAX Device and Mesh Setup ---
 if jax.default_backend() == 'tpu':

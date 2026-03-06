@@ -41,7 +41,7 @@ from flax.nnx.nn.dtypes import promote_dtype
 from flax.typing import Dtype, PrecisionLike
 from jax import Array
 
-from nmn.nnx.squashers import softermax
+from nmn.nnx.layers.squashers import softermax
 
 
 def yat_attention_weights(

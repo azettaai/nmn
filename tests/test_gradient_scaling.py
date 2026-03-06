@@ -2,7 +2,7 @@
 import jax
 import jax.numpy as jnp
 from jax import random
-from nmn.nnx.attention.spherical_yat_performer import yat_tp_attention, create_yat_tp_projection
+from nmn.nnx.layers.attention.spherical_yat_performer import yat_tp_attention, create_yat_tp_projection
 
 print('Testing gradient scaling fix...')
 key = random.PRNGKey(42)

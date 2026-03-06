@@ -10,14 +10,14 @@ import numpy as np
 from flax import nnx
 
 # Import the attention modules
-from nmn.nnx.attention import RotaryYatAttention
-from nmn.nnx.attention.yat_attention import (
+from nmn.nnx.layers.attention import RotaryYatAttention
+from nmn.nnx.layers.attention.yat_attention import (
     normalize_qk,
     yat_performer_feature_map,
     yat_performer_attention,
     create_yat_projection,
 )
-from nmn.nnx.attention.rotary_yat import (
+from nmn.nnx.layers.attention.rotary_yat import (
     precompute_freqs_cis,
     apply_rotary_emb,
     rotary_yat_performer_attention,

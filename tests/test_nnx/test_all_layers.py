@@ -33,23 +33,23 @@ class TestLayerImports:
     
     def test_import_yat_conv(self):
         """Test YatConv import."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         assert YatConv is not None
     
     def test_import_yat_conv_transpose(self):
         """Test YatConvTranspose import."""
-        from nmn.nnx.conv import YatConvTranspose
+        from nmn.nnx.layers.conv import YatConvTranspose
         assert YatConvTranspose is not None
     
     def test_import_yat_attention(self):
         """Test attention imports."""
-        from nmn.nnx.attention import yat_attention_weights, MultiHeadAttention
+        from nmn.nnx.layers.attention import yat_attention_weights, MultiHeadAttention
         assert yat_attention_weights is not None
         assert MultiHeadAttention is not None
     
     def test_import_squashers(self):
         """Test squasher imports."""
-        from nmn.nnx.squashers import softermax, softer_sigmoid, soft_tanh
+        from nmn.nnx.layers.squashers import softermax, softer_sigmoid, soft_tanh
         assert softermax is not None
         assert softer_sigmoid is not None
         assert soft_tanh is not None
@@ -152,7 +152,7 @@ class TestYatConvComprehensive:
     
     def test_conv1d_forward_valid_padding(self):
         """Test 1D convolution forward pass with valid padding."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3,), padding='VALID', rngs=rngs)
         x = jnp.ones((2, 16, 3))
@@ -161,7 +161,7 @@ class TestYatConvComprehensive:
     
     def test_conv1d_forward_same_padding(self):
         """Test 1D convolution forward pass with same padding."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3,), padding='SAME', rngs=rngs)
         x = jnp.ones((2, 16, 3))
@@ -170,7 +170,7 @@ class TestYatConvComprehensive:
     
     def test_conv2d_forward_valid_padding(self):
         """Test 2D convolution forward pass with valid padding."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), padding='VALID', rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -179,7 +179,7 @@ class TestYatConvComprehensive:
     
     def test_conv2d_forward_same_padding(self):
         """Test 2D convolution forward pass with same padding."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), padding='SAME', rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -188,7 +188,7 @@ class TestYatConvComprehensive:
     
     def test_conv2d_stride(self):
         """Test 2D convolution with stride."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), strides=(2, 2), padding='SAME', rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -197,7 +197,7 @@ class TestYatConvComprehensive:
     
     def test_gradient_flow(self):
         """Test gradient computation."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         rngs = nnx.Rngs(0)
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), rngs=rngs)
         x = jnp.ones((2, 16, 16, 3))
@@ -211,7 +211,7 @@ class TestYatConvComprehensive:
     
     def test_positive_outputs(self):
         """Test that outputs are non-negative without bias."""
-        from nmn.nnx.conv import YatConv
+        from nmn.nnx.layers.conv import YatConv
         rngs = nnx.Rngs(42)
         
         layer = YatConv(in_features=3, out_features=8, kernel_size=(3, 3), use_bias=False, use_alpha=False, rngs=rngs)
@@ -231,7 +231,7 @@ class TestYatConvTransposeComprehensive:
     
     def test_conv_transpose2d_forward(self):
         """Test 2D transposed convolution forward pass."""
-        from nmn.nnx.conv import YatConvTranspose
+        from nmn.nnx.layers.conv import YatConvTranspose
         rngs = nnx.Rngs(0)
         layer = YatConvTranspose(
             in_features=8, out_features=3, kernel_size=(2, 2), strides=(2, 2), rngs=rngs
@@ -246,7 +246,7 @@ class TestYatConvTransposeComprehensive:
     
     def test_gradient_flow(self):
         """Test gradient computation for transposed conv."""
-        from nmn.nnx.conv import YatConvTranspose
+        from nmn.nnx.layers.conv import YatConvTranspose
         rngs = nnx.Rngs(0)
         layer = YatConvTranspose(
             in_features=8, out_features=3, kernel_size=(2, 2), strides=(2, 2), rngs=rngs
@@ -270,7 +270,7 @@ class TestSquashers:
     
     def test_softermax_basic(self):
         """Test basic softermax functionality."""
-        from nmn.nnx.squashers import softermax
+        from nmn.nnx.layers.squashers import softermax
         
         x = jnp.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
         output = softermax(x)
@@ -281,7 +281,7 @@ class TestSquashers:
     
     def test_softermax_no_nan(self):
         """Test that softermax doesn't produce NaN."""
-        from nmn.nnx.squashers import softermax
+        from nmn.nnx.layers.squashers import softermax
         
         # Large values that might cause overflow
         x = jnp.array([[100.0, 200.0, 300.0]])
@@ -292,7 +292,7 @@ class TestSquashers:
     
     def test_softer_sigmoid_no_nan(self):
         """Test that softer_sigmoid doesn't produce NaN."""
-        from nmn.nnx.squashers import softer_sigmoid
+        from nmn.nnx.layers.squashers import softer_sigmoid
         
         x = jax.random.normal(jax.random.PRNGKey(0), (10, 10))
         output = softer_sigmoid(x)
@@ -303,7 +303,7 @@ class TestSquashers:
     
     def test_soft_tanh_no_nan(self):
         """Test that soft_tanh doesn't produce NaN."""
-        from nmn.nnx.squashers import soft_tanh
+        from nmn.nnx.layers.squashers import soft_tanh
         
         x = jax.random.normal(jax.random.PRNGKey(0), (10, 10))
         output = soft_tanh(x)
@@ -322,7 +322,7 @@ class TestMultiHeadAttention:
     
     def test_attention_forward(self):
         """Test basic attention forward pass."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         rngs = nnx.Rngs(0)
         
         attn = MultiHeadAttention(
@@ -339,7 +339,7 @@ class TestMultiHeadAttention:
     
     def test_attention_with_mask(self):
         """Test attention with mask."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         rngs = nnx.Rngs(0)
         
         attn = MultiHeadAttention(
@@ -356,7 +356,7 @@ class TestMultiHeadAttention:
     
     def test_self_attention(self):
         """Test self-attention (q and kv are the same)."""
-        from nmn.nnx.attention import MultiHeadAttention
+        from nmn.nnx.layers.attention import MultiHeadAttention
         rngs = nnx.Rngs(0)
         
         attn = MultiHeadAttention(

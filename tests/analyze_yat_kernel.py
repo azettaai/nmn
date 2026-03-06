@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from nmn.nnx.attention.yat_attention import create_yat_projection
+from nmn.nnx.layers.attention.yat_attention import create_yat_projection
 
 
 def yat_kernel(dot_product: float, epsilon: float = 1e-5) -> float:
