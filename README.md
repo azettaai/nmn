@@ -15,18 +15,19 @@
 <p align="center">
   <a href="https://pypi.org/project/nmn/"><img src="https://img.shields.io/pypi/v/nmn.svg?style=flat-square&color=blue" alt="PyPI version"></a>
   <a href="https://pepy.tech/project/nmn"><img src="https://static.pepy.tech/badge/nmn?style=flat-square" alt="Downloads"></a>
-  <a href="https://github.com/mlnomadpy/nmn"><img src="https://img.shields.io/github/stars/mlnomadpy/nmn?style=flat-square&color=yellow" alt="GitHub stars"></a>
-  <a href="https://github.com/mlnomadpy/nmn/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/mlnomadpy/nmn/test.yml?style=flat-square&label=tests" alt="Tests"></a>
-  <a href="https://codecov.io/gh/mlnomadpy/nmn"><img src="https://img.shields.io/codecov/c/github/mlnomadpy/nmn?style=flat-square" alt="Coverage"></a>
+  <a href="https://github.com/azettaai/nmn"><img src="https://img.shields.io/github/stars/azettaai/nmn?style=flat-square&color=yellow" alt="GitHub stars"></a>
+  <a href="https://github.com/azettaai/nmn/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/azettaai/nmn/test.yml?style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://codecov.io/gh/azettaai/nmn"><img src="https://img.shields.io/codecov/c/github/azettaai/nmn?style=flat-square" alt="Coverage"></a>
   <a href="https://pypi.org/project/nmn/"><img src="https://img.shields.io/pypi/pyversions/nmn?style=flat-square" alt="Python"></a>
   <a href="https://pypi.org/project/nmn/"><img src="https://img.shields.io/pypi/l/nmn?style=flat-square&color=green" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="https://mlnomadpy.github.io/nmn/"><strong>📚 Documentation</strong></a> ·
-  <a href="https://mlnomadpy.github.io/nmn/paper/"><strong>📄 Read the Paper</strong></a> ·
-  <a href="https://mlnomadpy.github.io/nmn/blog"><strong>📝 Read the Blog</strong></a> ·
-  <a href="https://github.com/mlnomadpy/nmn/issues"><strong>🐛 Report Bug</strong></a>
+  <a href="https://azettaai.github.io/nmn/"><strong>📚 Documentation</strong></a> ·
+  <a href="https://azettaai.github.io/nmn/paper/"><strong>📄 Read the Paper</strong></a> ·
+  <a href="https://azettaai.github.io/nmn/blog"><strong>📝 Read the Blog</strong></a> ·
+  <a href="https://github.com/azettaai/nmn/issues"><strong>🐛 Report Bug</strong></a> ·
+  <a href="https://azetta.ai"><strong>🌐 Azetta.ai</strong></a>
 </p>
 
 ---
@@ -254,82 +255,39 @@ This demonstrates the **robustness of the geometric YAT formulation** across dif
 
 ---
 
-## 🎯 Framework Completeness
-
-### Layer Support Legend
-
-- ✅ **Production Ready** - Fully implemented and tested
-- ❌ **Not Implemented** - Not available in this framework
-- ⚠️ **Limited** - Partial support
-
-### PyTorch Coverage
-
-PyTorch includes all core layers plus attention mechanisms:
-- Dense (YatNMN)
-- Conv1d/2d/3d and ConvTranspose variants
-- Multi-head Attention
-- DropConnect support
-
-### Keras/TensorFlow Coverage
-
-Both frameworks have identical layer support:
-- Dense (YatNMN)
-- Conv1d/2d/3d and ConvTranspose1d/2d (no 3D transpose)
-- No attention or RNN layers (use NNX for advanced features)
-
-### Flax NNX — Most Complete
-
-Full suite including:
-- All core layers (Dense, Conv, ConvTranspose)
-- **Advanced attention**: MultiHeadAttention, RotaryYatAttention, Performer
-- **RNN cells**: SimpleCell, LSTMCell, GRUCell + RNN wrapper
-- **Activation alternatives**: softermax, softer_sigmoid, soft_tanh
-- **Regularization**: DropConnect on Conv and Dense layers
-
-### Flax Linen
-
-Basic convolutional support only:
-- Dense (YatNMN)
-- Conv1d/2d/3d only (no transposed convolutions)
-- For advanced features, use NNX instead
-
----
-
-## ⚙️ Advanced Features (Flax NNX)
+## ⚙️ Advanced Features (Flax NNX Only)
 
 ### Attention Mechanisms
 
-**MultiHeadAttention** — Standard multi-head attention with YAT formula
-```python
-from nmn.nnx.attention import MultiHeadAttention
-from flax import nnx
+Select the right attention variant for your use case:
 
-attn = MultiHeadAttention(num_heads=8, in_features=512, rngs=nnx.Rngs(0))
-output = attn(query, key, value)
-```
+| Variant | Use Case | Complexity |
+|---------|----------|-----------|
+| **MultiHeadAttention** | Standard multi-head attention with YAT | O(n²) |
+| **RotaryYatAttention** | With Rotary Position Embeddings (RoPE) | O(n²) |
+| **Performer Mode** | Linear complexity with FAVOR+ approximation | O(n) |
 
-**RotaryYatAttention** — Combines Rotary Position Embeddings (RoPE) with YAT
 ```python
 from nmn.nnx.attention import RotaryYatAttention
+from flax import nnx
 
+# Standard Rotary YAT Attention
 attn = RotaryYatAttention(embed_dim=512, num_heads=8, rngs=nnx.Rngs(0))
-output = attn(x)  # Self-attention with positional awareness
-```
+output = attn(x)
 
-**Performer Mode** — O(n) linear complexity using FAVOR+ approximation
-```python
-attn = RotaryYatAttention(
+# Performer Mode (O(n) linear complexity)
+attn_fast = RotaryYatAttention(
     embed_dim=512, 
     num_heads=8,
-    use_performer=True,      # Enable FAVOR+ approximation
-    num_features=256,        # Performer feature count
+    use_performer=True,  # Enable FAVOR+ approximation
+    num_features=256,    # Feature projection dimension
     rngs=nnx.Rngs(0)
 )
 ```
 
 ### Recurrent Layers
 
-**RNN Cell Options**: YatSimpleCell, YatLSTMCell, YatGRUCell
+**RNN Cells**: YatSimpleCell, YatLSTMCell, YatGRUCell
 
 ```python
 from nmn.nnx.rnn import YatLSTMCell, RNN, Bidirectional
@@ -413,30 +371,16 @@ pip install "nmn[test]"
 # Run all tests
 pytest tests/ -v
 
-# Run specific framework
-pytest tests/test_torch/ -v
-pytest tests/test_keras/ -v
-pytest tests/test_nnx/ -v
+# Run specific framework tests
+pytest tests/test_torch/ -v      # PyTorch
+pytest tests/test_keras/ -v      # Keras
+pytest tests/test_nnx/ -v        # Flax NNX
 
-# Run cross-framework consistency tests
+# Cross-framework consistency validation
 pytest tests/integration/test_cross_framework_consistency.py -v
 
-# With coverage
+# With coverage report
 pytest tests/ --cov=nmn --cov-report=html
-```
-
-### Test Structure
-
-```
-tests/
-├── test_torch/          # PyTorch layer tests + math validation
-├── test_keras/          # Keras layer tests
-├── test_tf/             # TensorFlow layer tests
-├── test_nnx/            # Flax NNX tests (attention, RNN, etc.)
-├── test_linen/          # Flax Linen tests
-└── integration/
-    ├── test_cross_framework_consistency.py  # Numerical equivalence
-    └── test_compatibility.py                # API compatibility
 ```
 
 ---
@@ -473,7 +417,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Development setup
-git clone https://github.com/mlnomadpy/nmn.git
+git clone https://github.com/azettaai/nmn.git
 cd nmn
 pip install -e ".[dev,test]"
 
@@ -486,7 +430,7 @@ isort src/ tests/
 ```
 
 **Areas for contribution:**
-- 🐛 Bug fixes ([open issues](https://github.com/mlnomadpy/nmn/issues))
+- 🐛 Bug fixes ([open issues](https://github.com/azettaai/nmn/issues))
 - ✨ New layer types (normalization, graph, etc.)
 - 📚 Documentation and tutorials
 - ⚡ Performance optimizations
@@ -494,9 +438,9 @@ isort src/ tests/
 
 ---
 
-## 📖 API Reference
+## 📖 Quick API Reference
 
-### Core Parameters
+### Common Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -505,9 +449,8 @@ isort src/ tests/
 | `kernel_size` | int \| tuple | Convolution kernel size |
 | `epsilon` | float | Numerical stability (default: 1e-5) |
 | `use_bias` | bool | Include bias term (default: True) |
-| `use_alpha` | bool | Learnable output scaling (default: True) |
 
-### Quick Imports
+### Framework Imports
 
 ```python
 # PyTorch
@@ -519,13 +462,10 @@ from nmn.keras.nmn import YatNMN
 from nmn.keras.conv import YatConv2D
 
 # Flax NNX (most complete)
-from nmn.nnx.nmn import YatNMN
-from nmn.nnx.yatconv import YatConv
-from nmn.nnx.yatattention import MultiHeadAttention
-from nmn.nnx.rnn import YatLSTMCell
+from nmn.nnx import YatNMN, YatConv, MultiHeadAttention, softermax
 ```
 
-📋 Full import reference → **[EXAMPLES.md](EXAMPLES.md#framework-imports-reference)**
+📋 Full reference → **[EXAMPLES.md](EXAMPLES.md)**
 
 ---
 
@@ -538,34 +478,23 @@ If you use NMN in your research, please cite:
   author = {Bouhsine, Taha},
   title = {NMN: Neural Matter Networks},
   year = {2024},
-  url = {https://github.com/mlnomadpy/nmn}
+  url = {https://github.com/azettaai/nmn}
 }
 
 @article{bouhsine2024dl2,
-  author = {Taha Bouhsine},
-  title = {Deep Learning 2.0: Artificial Neurons that Matter},
+  author = {Bouhsine, Taha},
+  title = {Deep Learning 2.0: Artificial Neurons that Matter --- Reject Correlation, Embrace Orthogonality},
   year = {2024}
-}
-
-@article{bouhsine2025dl21,
-  author = {Taha Bouhsine},
-  title = {Deep Learning 2.1: Mind and Cosmos},
-  year = {2025}
-}
-
-@article{bouhsine2025nomoredelulu,
-  author = {Taha Bouhsine},
-  title = {No More DeLuLu: A Kernel-Based Activation-Free Neural Networks},
-  year = {2025}
 }
 ```
 
 ---
 
-## 📬 Support
+## 📬 Support & Community
 
-- 🐛 **Issues**: [GitHub Issues](https://github.com/mlnomadpy/nmn/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/mlnomadpy/nmn/discussions)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/azettaai/nmn/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/azettaai/nmn/discussions)
+- 🌐 **Company**: [azetta.ai](https://azetta.ai)
 - 📧 **Contact**: taha@azetta.ai
 
 ---
@@ -576,10 +505,19 @@ If you use NMN in your research, please cite:
 
 If you modify and deploy on a network, you must share the source code.
 
-For alternative licensing, contact us.
+For alternative licensing, contact us at taha@azetta.ai.
+
+---
+
+## 🙏 Acknowledgments
+
+This project was originally developed under the [mlnomadpy organization](https://github.com/mlnomadpy/nmn) and is now maintained by [Azetta.ai](https://azetta.ai).
+
+The foundations of NMN were established through extensive research and community contributions. We're grateful to everyone who has contributed code, feedback, and ideas to make this project better.
 
 ---
 
 <p align="center">
-  <sub>Built with ❤️ by <a href="https://github.com/mlnomadpy">azetta.ai</a></sub>
+  <sub>Built with ❤️ by <a href="https://azetta.ai">Azetta.ai</a> · 
+  Originally created by <a href="https://github.com/mlnomadpy">ML Nomad</a></sub>
 </p>
