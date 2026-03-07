@@ -18,7 +18,9 @@ from flax.typing import (
 
 Array = jax.Array
 
-default_embed_init = initializers.uniform(scale=1.0)
+default_embed_init = initializers.variance_scaling(
+  1.0, 'fan_in', 'normal', out_axis=0
+)
 default_alpha_init = initializers.ones_init()
 
 
@@ -76,7 +78,9 @@ class Embed(Module):
       If None (default), use learnable alpha when use_alpha=True.
     epsilon: small value added to denominator for numerical stability in YAT (default: 1e-5).
     spherical: if True, normalize query and embeddings before YAT computation (default: False).
-    weight_normalized: if True, normalize embeddings to have unit norm (default: False).
+      Ignored if weight_normalized=True.
+    weight_normalized: if True, normalize embeddings to unit norm at initialization only.
+      Does not maintain normalization during training. (default: False)
     alpha_init: initializer function for learnable alpha (only used if constant_alpha is None).
     rngs: rng key.
   """
@@ -168,7 +172,7 @@ class Embed(Module):
     return jnp.take(embedding, inputs, axis=0)
 
   def attend(self, query: jax.Array) -> jax.Array:
-    """Attend over the embedding using YAT (Your Attention Transform).
+    """Attend over the embedding using YAT.
 
     Computes: y = (query · embedding)² / (||query - embedding||² + ε)
     with optional alpha scaling.
@@ -193,11 +197,8 @@ class Embed(Module):
     else:
       alpha = None
 
-    # Normalize if weight normalization is enabled
-    if self.weight_normalized:
-      embedding = embedding / (jnp.sqrt(jnp.sum(embedding**2, axis=1, keepdims=True)) + 1e-8)
-
-    # Spherical normalization
+    # Spherical normalization (only if not using weight normalization)
+    # weight_normalized only normalizes at init, doesn't maintain it during training
     if self.spherical:
       query = query / jnp.linalg.norm(query, axis=-1, keepdims=True)
       embedding = embedding / jnp.linalg.norm(embedding, axis=1, keepdims=True)
@@ -216,13 +217,7 @@ class Embed(Module):
     else:
       # Compute squared Euclidean distance: ||query||² + ||embedding||² - 2(query · embedding)
       query_squared_sum = jnp.sum(query**2, axis=-1, keepdims=True)
-      
-      # Optimization: if embeddings are normalized, ||embedding||² = 1 for each embedding
-      if self.weight_normalized:
-        embedding_squared_sum = jnp.ones((1, embedding.shape[0]), dtype=embedding.dtype)
-      else:
-        embedding_squared_sum = jnp.sum(embedding**2, axis=1, keepdims=True).T
-      
+      embedding_squared_sum = jnp.sum(embedding**2, axis=1, keepdims=True).T
       distances = query_squared_sum + embedding_squared_sum - 2 * y
 
     # YAT operation: (query · embedding)² / (||query - embedding||² + ε)
