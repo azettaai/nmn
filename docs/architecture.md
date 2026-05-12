@@ -17,19 +17,17 @@ $$
 A **Yat neuron** computes:
 
 $$
-\mathrm{ⵟ}(\mathbf{w}, \mathbf{x}, b) = \frac{\bigl(\langle \mathbf{w}, \mathbf{x} \rangle + b\bigr)^2}{\lVert \mathbf{w} - \mathbf{x} \rVert^2 + \varepsilon}
+\mathrm{ⵟ}(\mathbf{w}, \mathbf{x}) = \frac{\langle \mathbf{w}, \mathbf{x} \rangle^2}{\lVert \mathbf{w} - \mathbf{x} \rVert^2 + \varepsilon}
 $$
 
-No `σ` (activation). The non-linearity is intrinsic: the operation is the ratio of a squared affine score (numerator) and a squared Euclidean distance (denominator).
-
-The numerator is the **biased polynomial kernel of degree 2**: the bias `b` is added to the inner product *before* squaring, so its effect is multiplicative and quadratic, not a post-hoc linear shift. When `b = 0` this reduces to the homogeneous form $\langle \mathbf{w}, \mathbf{x} \rangle^2 / (\lVert \mathbf{w} - \mathbf{x} \rVert^2 + \varepsilon)$.
+No `σ` (activation). The non-linearity is intrinsic: the operation is a ratio of a squared inner product (similarity) and a squared distance (proximity).
 
 ### Geometric reading
 
-Rewriting the homogeneous case ($b = 0$) in terms of norms and angle θ between **w** and **x**:
+Rewriting in terms of norms and angle θ between **w** and **x**:
 
 $$
-\mathrm{ⵟ}(\mathbf{w}, \mathbf{x}, 0) = \frac{\lVert\mathbf{w}\rVert^2 \lVert\mathbf{x}\rVert^2 \cos^2\theta}{\lVert\mathbf{w}\rVert^2 - 2\langle\mathbf{w},\mathbf{x}\rangle + \lVert\mathbf{x}\rVert^2 + \varepsilon}
+\mathrm{ⵟ}(\mathbf{w}, \mathbf{x}) = \frac{\lVert\mathbf{w}\rVert^2 \lVert\mathbf{x}\rVert^2 \cos^2\theta}{\lVert\mathbf{w}\rVert^2 - 2\langle\mathbf{w},\mathbf{x}\rangle + \lVert\mathbf{x}\rVert^2 + \varepsilon}
 $$
 
 The neuron fires strongest when **w** and **x** are simultaneously:
@@ -40,16 +38,14 @@ The neuron fires strongest when **w** and **x** are simultaneously:
 
 A standard ReLU neuron fires strongly for any vector that is *aligned* with **w**, regardless of how far away it is. The Yat neuron does not: distance always discounts the response. This is the key behavioral difference.
 
-A non-zero `b` lifts the "zero-response" surface off the origin: the numerator vanishes on the hyperplane $\langle \mathbf{w}, \mathbf{x} \rangle = -b$ rather than on $\langle \mathbf{w}, \mathbf{x} \rangle = 0$. In our implementation the bias is a **scalar shared by all neurons in the layer** (see commit history), matching the theoretical setup of a single biased polynomial kernel per layer.
-
 ---
 
 ## 2. Convolutional form
 
-For a kernel **W**, an input patch **X** of the same shape, and a scalar bias `b`:
+For a kernel **W** and an input patch **X** of the same shape:
 
 $$
-\mathrm{ⵟ}^*(\mathbf{W}, \mathbf{X}, b) = \frac{\bigl(\sum_{i,j} w_{ij} x_{ij} + b\bigr)^2}{\sum_{i,j} (w_{ij} - x_{ij})^2 + \varepsilon}
+\mathrm{ⵟ}^*(\mathbf{W}, \mathbf{X}) = \frac{\left(\sum_{i,j} w_{ij} x_{ij}\right)^2}{\sum_{i,j} (w_{ij} - x_{ij})^2 + \varepsilon}
 $$
 
 Same identity, applied per patch. `YatConv1D`, `YatConv2D`, `YatConv3D`, and their transposes all use this operation.
