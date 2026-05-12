@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/azettaai/nmn/master/assets/logo.png" alt="NMN Logo" width="180" height="180" onerror="this.style.display='none'">
-</p>
-
-<h1 align="center">⚛️ NMN — Neural Matter Networks</h1>
+<h1 align="center">NMN — Neural Matter Networks</h1>
 
 <p align="center">
   <em>Activation-free neural layers that learn non-linearity through geometric operations.</em>
