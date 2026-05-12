@@ -11,12 +11,14 @@ sidebar_position: 1
 The core operation is defined as:
 
 $$
-\text{ⵟ}(\mathbf{w}, \mathbf{x}) = \frac{\langle \mathbf{w}, \mathbf{x} \rangle^2}{\|\mathbf{w} - \mathbf{x}\|^2 + \epsilon}
+\text{ⵟ}(\mathbf{w}, \mathbf{x}, b) = \frac{\bigl(\langle \mathbf{w}, \mathbf{x} \rangle + b\bigr)^2}{\|\mathbf{w} - \mathbf{x}\|^2 + \epsilon}
 $$
 
 Where:
-- **Numerator**: Squared dot product captures **alignment** between vectors
+- **Numerator**: The **biased polynomial kernel of degree 2** — the bias `b` is added to the inner product *before* squaring, capturing **alignment** and shifting the zero-response surface off the origin
 - **Denominator**: Squared Euclidean distance captures **proximity** with ε for stability
+
+When $b = 0$ this reduces to the homogeneous form $\langle \mathbf{w}, \mathbf{x} \rangle^2 / (\|\mathbf{w} - \mathbf{x}\|^2 + \epsilon)$.
 
 ## Why ⵟ-Product?
 

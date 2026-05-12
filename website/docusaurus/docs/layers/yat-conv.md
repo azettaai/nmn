@@ -11,10 +11,10 @@ Convolutional layer using the ⵟ-product for geometrically-aware feature extrac
 For each output location $(i, j)$:
 
 $$
-(\text{ⵟ-Conv}(K, I))_{i,j} = \frac{\langle K, I_{i,j} \rangle^2}{\|K - I_{i,j}\|^2 + \epsilon}
+(\text{ⵟ-Conv}(K, I, b))_{i,j} = \frac{\bigl(\langle K, I_{i,j} \rangle + b\bigr)^2}{\|K - I_{i,j}\|^2 + \epsilon}
 $$
 
-Where $K$ is the kernel and $I_{i,j}$ is the input patch at position $(i, j)$.
+Where $K$ is the kernel, $I_{i,j}$ is the input patch at position $(i, j)$, and $b$ is a scalar bias absorbed *inside* the squared polynomial (not added after the ratio).
 
 ## Import
 
