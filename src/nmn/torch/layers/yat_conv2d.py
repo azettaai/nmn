@@ -252,8 +252,9 @@ class YatConv2D(Conv2d):
         # Apply DropConnect if enabled and not in deterministic mode
         if self.use_dropconnect and not deterministic and self.drop_rate > 0.0:
             if self.training:
-                dropout_mask = torch.rand_like(weight) > self.drop_rate
-                weight = weight * dropout_mask
+                keep_prob = 1.0 - self.drop_rate
+                drop_mask = torch.bernoulli(torch.full_like(weight, keep_prob))
+                weight = (weight * drop_mask) / keep_prob
 
         # Apply mask if provided
         if self.mask is not None:
