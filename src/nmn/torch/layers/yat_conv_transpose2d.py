@@ -12,6 +12,8 @@ from torch.nn.modules.utils import _pair
 
 from torch.nn import ConvTranspose2d
 
+from ._yat_conv_core import yat_conv_transpose_forward
+
 __all__ = ["YatConvTranspose2D"]
 
 # Default constant alpha value (sqrt(2))
@@ -133,129 +135,17 @@ class YatConvTranspose2D(ConvTranspose2d):
         else:
             self.register_buffer("mask", None)
 
-    def _promote_dtype(self, *tensors):
-        """Promote tensors to computation dtype."""
-        if self.compute_dtype is not None:
-            target = self.compute_dtype
-        else:
-            target = None
-            for t in tensors:
-                if t is not None:
-                    target = t.dtype
-                    break
-            if target is None:
-                target = torch.float32
-        return tuple(
-            t.to(target) if t is not None else None for t in tensors
-        )
-
     def forward(self, input: Tensor, output_size: Optional[list[int]] = None, *, deterministic: bool = False) -> Tensor:
         if self.padding_mode != "zeros":
             raise ValueError("Only `zeros` padding mode is supported for YatConvTranspose2D")
-
-        weight = self.weight
-        # Resolve bias (learnable or constant)
-        if self._constant_bias_value is not None:
-            bias_val = torch.full(
-                (self.out_channels,),
-                self._constant_bias_value,
-                dtype=self.param_dtype if self.param_dtype is not None else weight.dtype,
-                device=weight.device,
-            )
-        else:
-            bias_val = self.bias
-            if bias_val is not None and self.softplus_bias:
-                bias_val = F.softplus(bias_val)
-
-        # Get alpha value (constant or learnable)
-        if self._constant_alpha_value is not None:
-            alpha = torch.tensor(self._constant_alpha_value, device=input.device)
-        elif self.alpha is not None:
-            alpha = self.alpha
-        else:
-            alpha = None
-
-        # Promote to computation dtype
-        input, weight, bias_val, alpha = self._promote_dtype(input, weight, bias_val, alpha)
-
-        # Apply DropConnect
-        if self.use_dropconnect and not deterministic and self.drop_rate > 0.0 and self.training:
-            keep_prob = 1.0 - self.drop_rate
-            drop_mask = torch.bernoulli(torch.full_like(weight, keep_prob))
-            weight = (weight * drop_mask) / keep_prob
-
-        # Apply mask
-        if self.mask is not None:
-            weight = weight * self.mask
-
-        # Compute output_padding
-        num_spatial_dims = 2
         if output_size is not None:
             output_padding = self._output_padding(
                 input, output_size, self.stride, self.padding,
-                self.kernel_size, num_spatial_dims, self.dilation
+                self.kernel_size, num_spatial_dims=2, dilation=self.dilation,
             )
         else:
             output_padding = self.output_padding
-
-        # Compute dot product using transposed convolution
-        dot_prod_map = F.conv_transpose2d(
-            input, weight, None, self.stride, self.padding,
-            output_padding, self.groups, self.dilation
+        return yat_conv_transpose_forward(
+            self, input, F.conv_transpose2d, output_padding,
+            deterministic=deterministic,
         )
-
-        # Compute ||input||^2 contribution using transposed convolution with ones kernel
-        # For transpose conv, weight shape is (in_channels, out_channels/groups, *kernel_size)
-        input_squared = input * input
-
-        # ones kernel matches conv_transpose2d's expected layout
-        # (in_channels, out_channels/groups, *kernel_size)
-        gin = self.in_channels // self.groups
-        gout = self.out_channels // self.groups
-        ones_kernel = torch.ones(
-            (self.in_channels, gout) + self.kernel_size,
-            device=input.device, dtype=input.dtype,
-        )
-
-        patch_sq_sum_map = F.conv_transpose2d(
-            input_squared, ones_kernel, None, self.stride, self.padding,
-            output_padding, self.groups, self.dilation
-        )
-
-        # Compute ||kernel||^2 per output filter.
-        # Weight shape: (in_channels, out_channels/groups, *kernel_size).
-        # For groups > 1, each absolute output channel only sees its group's
-        # input channels — reshape to (groups, gin, gout, *k), sum over gin and
-        # spatial, then flatten back to (out_channels,).
-        w_grouped = weight.view(self.groups, gin, gout, *self.kernel_size)
-        reduce_dims = (1,) + tuple(range(3, w_grouped.dim()))
-        kernel_sq_sum_per_filter = (w_grouped ** 2).sum(dim=reduce_dims).reshape(-1)
-
-        view_shape = (1, -1) + (1,) * (dot_prod_map.dim() - 2)
-        kernel_sq_sum_reshaped = kernel_sq_sum_per_filter.view(*view_shape)
-
-        # Compute distance
-        distance_sq_map = patch_sq_sum_map + kernel_sq_sum_reshaped - 2 * dot_prod_map
-
-        # Add bias before squaring: (x·W + b)² / (dist + ε)
-        if bias_val is not None:
-            dot_prod_map = dot_prod_map + bias_val.view(*view_shape)
-
-        # Resolve effective epsilon (learnable via softplus, or constant)
-        if self.learnable_epsilon and self.epsilon_param is not None:
-            eps = F.softplus(self.epsilon_param.to(distance_sq_map.dtype))
-        else:
-            eps = self.epsilon
-
-        # YAT computation
-        y = dot_prod_map**2 / (distance_sq_map + eps)
-
-        # Apply alpha scaling
-        if self._constant_alpha_value is not None:
-            # Constant alpha: use directly as the scale factor (e.g. sqrt(2))
-            y = y * self._constant_alpha_value
-        elif alpha is not None:
-            # Simple learnable alpha scaling
-            y = y * alpha
-
-        return y
