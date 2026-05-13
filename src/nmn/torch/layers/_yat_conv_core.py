@@ -14,19 +14,112 @@ torch conv classes already expose.
 
 from __future__ import annotations
 
+import math
 from typing import Callable, Iterable, Optional
 
 import torch
 from torch import Tensor
+from torch import nn
 from torch.nn import functional as F
 from torch.nn.modules.utils import _single
+from torch.nn.parameter import Parameter
 
 
 __all__ = [
+    "DEFAULT_CONSTANT_ALPHA",
     "promote_to_compute_dtype",
+    "setup_yat_attrs",
     "yat_conv_forward",
     "yat_conv_transpose_forward",
 ]
+
+
+# Default constant alpha value (sqrt(2)).
+DEFAULT_CONSTANT_ALPHA = math.sqrt(2.0)
+
+
+def setup_yat_attrs(
+    layer,
+    *,
+    bias: bool,
+    constant_bias: Optional[float],
+    softplus_bias: bool,
+    scalar_bias: bool,
+    use_alpha: bool,
+    constant_alpha,
+    use_dropconnect: bool,
+    drop_rate: float,
+    mask: Optional[Tensor],
+    epsilon: float,
+    learnable_epsilon: bool,
+    storage_dtype,
+    compute_dtype,
+    device,
+):
+    """Attach YAT-specific attributes to a freshly super().__init__()'d
+    torch conv / transpose-conv layer.
+
+    Sets:
+      _constant_bias_value, constant_bias, bias (may rebuild as scalar),
+      softplus_bias, scalar_bias, compute_dtype, param_dtype,
+      use_dropconnect, epsilon, learnable_epsilon, epsilon_param,
+      drop_rate, _constant_alpha_value, alpha, use_alpha,
+      constant_alpha, mask buffer.
+    """
+    # Constant bias.
+    layer._constant_bias_value = None
+    if constant_bias is not None and constant_bias is not False:
+        layer._constant_bias_value = float(constant_bias)
+        bias = True
+    layer.constant_bias = constant_bias
+
+    # Scalar bias: one shared learnable parameter that broadcasts across
+    # all output channels.
+    if scalar_bias and constant_bias is None and bias:
+        bias_param_dtype = storage_dtype if storage_dtype is not None else torch.float32
+        layer.bias = nn.Parameter(torch.zeros((1,), dtype=bias_param_dtype, device=device))
+    layer.softplus_bias = softplus_bias and layer.bias is not None
+    layer.scalar_bias = scalar_bias and layer.bias is not None
+
+    layer.compute_dtype = compute_dtype
+    layer.param_dtype = storage_dtype
+    layer.use_dropconnect = use_dropconnect
+
+    if epsilon <= 0:
+        raise ValueError(f"epsilon must be positive, got {epsilon}")
+    layer.epsilon = epsilon
+    layer.learnable_epsilon = learnable_epsilon
+    if learnable_epsilon:
+        raw_eps = math.log(math.exp(epsilon) - 1.0)
+        layer.epsilon_param = nn.Parameter(
+            torch.full(
+                (1,), raw_eps,
+                dtype=storage_dtype if storage_dtype else torch.float32,
+            )
+        )
+    else:
+        layer.register_parameter("epsilon_param", None)
+    layer.drop_rate = drop_rate
+
+    # Alpha. Priority: constant_alpha > use_alpha.
+    layer._constant_alpha_value = None
+    if constant_alpha is not None and constant_alpha is not False:
+        layer._constant_alpha_value = (
+            DEFAULT_CONSTANT_ALPHA if constant_alpha is True else float(constant_alpha)
+        )
+        layer.register_parameter("alpha", None)
+        use_alpha = True
+    elif use_alpha:
+        layer.alpha = Parameter(torch.ones(1, device=device, dtype=storage_dtype))
+    else:
+        layer.register_parameter("alpha", None)
+    layer.use_alpha = use_alpha
+    layer.constant_alpha = constant_alpha
+
+    if mask is not None:
+        layer.register_buffer("mask", mask)
+    else:
+        layer.register_buffer("mask", None)
 
 
 def promote_to_compute_dtype(layer, *tensors: Optional[Tensor]):

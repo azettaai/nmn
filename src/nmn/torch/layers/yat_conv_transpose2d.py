@@ -12,7 +12,7 @@ from torch.nn.modules.utils import _pair
 
 from torch.nn import ConvTranspose2d
 
-from ._yat_conv_core import yat_conv_transpose_forward
+from ._yat_conv_core import setup_yat_attrs, yat_conv_transpose_forward
 
 __all__ = ["YatConvTranspose2D"]
 
@@ -80,60 +80,15 @@ class YatConvTranspose2D(ConvTranspose2d):
             storage_dtype,
         )
 
-        # Constant bias handling
-        self._constant_bias_value: Optional[float] = None
-        if constant_bias is not None and constant_bias is not False:
-            self._constant_bias_value = float(constant_bias)
-            bias = True
-        self.constant_bias = constant_bias
-
-        # Scalar bias: allocate a shared-scalar learnable parameter that
-        # broadcasts across all output channels.
-        if scalar_bias and constant_bias is None and bias:
-            bias_param_dtype = storage_dtype if storage_dtype is not None else torch.float32
-            self.bias = nn.Parameter(torch.zeros((1,), dtype=bias_param_dtype, device=device))
-        self.softplus_bias = softplus_bias and self.bias is not None
-        self.scalar_bias = scalar_bias and self.bias is not None
-
-        self.compute_dtype = dtype
-        self.param_dtype = storage_dtype
-        self.use_dropconnect = use_dropconnect
-        if epsilon <= 0:
-            raise ValueError(f"epsilon must be positive, got {epsilon}")
-        self.epsilon = epsilon
-        self.learnable_epsilon = learnable_epsilon
-        if learnable_epsilon:
-            raw_eps = math.log(math.exp(epsilon) - 1.0)
-            self.epsilon_param = nn.Parameter(
-                torch.full((1,), raw_eps, dtype=storage_dtype if storage_dtype else torch.float32)
-            )
-        else:
-            self.register_parameter('epsilon_param', None)
-        self.drop_rate = drop_rate
-
-        factory_kwargs = {"device": device, "dtype": storage_dtype}
-
-        # Handle alpha configuration
-        # Priority: constant_alpha > use_alpha
-        self._constant_alpha_value = None
-        if constant_alpha is not None and constant_alpha is not False:
-            if constant_alpha is True:
-                self._constant_alpha_value = DEFAULT_CONSTANT_ALPHA
-            else:
-                self._constant_alpha_value = float(constant_alpha)
-            self.register_parameter("alpha", None)
-            use_alpha = True
-        elif use_alpha:
-            self.alpha = Parameter(torch.ones(1, **factory_kwargs))
-        else:
-            self.register_parameter("alpha", None)
-        self.use_alpha = use_alpha
-        self.constant_alpha = constant_alpha
-
-        if mask is not None:
-            self.register_buffer("mask", mask)
-        else:
-            self.register_buffer("mask", None)
+        setup_yat_attrs(
+            self,
+            bias=bias, constant_bias=constant_bias,
+            softplus_bias=softplus_bias, scalar_bias=scalar_bias,
+            use_alpha=use_alpha, constant_alpha=constant_alpha,
+            use_dropconnect=use_dropconnect, drop_rate=drop_rate, mask=mask,
+            epsilon=epsilon, learnable_epsilon=learnable_epsilon,
+            storage_dtype=storage_dtype, compute_dtype=dtype, device=device,
+        )
 
     def forward(self, input: Tensor, output_size: Optional[list[int]] = None, *, deterministic: bool = False) -> Tensor:
         if self.padding_mode != "zeros":
