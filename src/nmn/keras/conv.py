@@ -2217,7 +2217,11 @@ class YatConvTranspose3D(Layer):
         return config
 
 
-# Aliases for backward compatibility
+# DEPRECATED: lowercase aliases. The canonical names are the uppercase
+# variants (YatConv1D, YatConv2D, ...) — they match the names exported
+# from every other backend (torch / nnx / linen / tf). The lowercase
+# aliases are kept for backward compatibility and will be removed in a
+# future minor release.
 YatConv1d = YatConv1D
 YatConv2d = YatConv2D
 YatConv3d = YatConv3D
