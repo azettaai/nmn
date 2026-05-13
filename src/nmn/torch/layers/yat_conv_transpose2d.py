@@ -208,22 +208,28 @@ class YatConvTranspose2D(ConvTranspose2d):
         # For transpose conv, weight shape is (in_channels, out_channels/groups, *kernel_size)
         input_squared = input * input
 
-        # We need ones kernel that matches the weight layout for transpose conv
-        in_channels_per_group = self.in_channels // self.groups
-        out_channels_per_group = self.out_channels // self.groups
-        ones_kernel_shape = (in_channels_per_group, out_channels_per_group) + self.kernel_size
-        ones_kernel = torch.ones(ones_kernel_shape, device=input.device, dtype=input.dtype)
+        # ones kernel matches conv_transpose2d's expected layout
+        # (in_channels, out_channels/groups, *kernel_size)
+        gin = self.in_channels // self.groups
+        gout = self.out_channels // self.groups
+        ones_kernel = torch.ones(
+            (self.in_channels, gout) + self.kernel_size,
+            device=input.device, dtype=input.dtype,
+        )
 
         patch_sq_sum_map = F.conv_transpose2d(
             input_squared, ones_kernel, None, self.stride, self.padding,
             output_padding, self.groups, self.dilation
         )
 
-        # Compute ||kernel||^2 per output filter
-        # Weight shape: (in_channels, out_channels/groups, *kernel_size)
-        # Sum over in_channels (dim 0) and spatial dims, keep out_channels
-        reduce_dims = (0,) + tuple(range(2, weight.dim()))
-        kernel_sq_sum_per_filter = torch.sum(weight**2, dim=reduce_dims)
+        # Compute ||kernel||^2 per output filter.
+        # Weight shape: (in_channels, out_channels/groups, *kernel_size).
+        # For groups > 1, each absolute output channel only sees its group's
+        # input channels — reshape to (groups, gin, gout, *k), sum over gin and
+        # spatial, then flatten back to (out_channels,).
+        w_grouped = weight.view(self.groups, gin, gout, *self.kernel_size)
+        reduce_dims = (1,) + tuple(range(3, w_grouped.dim()))
+        kernel_sq_sum_per_filter = (w_grouped ** 2).sum(dim=reduce_dims).reshape(-1)
 
         view_shape = (1, -1) + (1,) * (dot_prod_map.dim() - 2)
         kernel_sq_sum_reshaped = kernel_sq_sum_per_filter.view(*view_shape)
