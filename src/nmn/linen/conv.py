@@ -49,7 +49,7 @@ class YatConv1D(Module):
     kernel_init: Any = nn.initializers.orthogonal()
     bias_init: Any = zeros_init()
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
-    epsilon: float = 1e-6
+    epsilon: float = 1e-5
     learnable_epsilon: bool = False
 
     @compact
@@ -194,7 +194,7 @@ class YatConv2D(Module):
     kernel_init: Any = nn.initializers.orthogonal()
     bias_init: Any = zeros_init()
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
-    epsilon: float = 1e-6
+    epsilon: float = 1e-5
     learnable_epsilon: bool = False
 
     @compact
@@ -339,7 +339,7 @@ class YatConv3D(Module):
     kernel_init: Any = nn.initializers.orthogonal()
     bias_init: Any = zeros_init()
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
-    epsilon: float = 1e-6
+    epsilon: float = 1e-5
     learnable_epsilon: bool = False
 
     @compact
@@ -478,7 +478,7 @@ class YatConvTranspose1D(Module):
     kernel_init: Any = nn.initializers.orthogonal()
     bias_init: Any = zeros_init()
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
-    epsilon: float = 1e-6
+    epsilon: float = 1e-5
     learnable_epsilon: bool = False
 
     @compact
@@ -607,7 +607,7 @@ class YatConvTranspose2D(Module):
     kernel_init: Any = nn.initializers.orthogonal()
     bias_init: Any = zeros_init()
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
-    epsilon: float = 1e-6
+    epsilon: float = 1e-5
     learnable_epsilon: bool = False
 
     @compact
@@ -736,7 +736,7 @@ class YatConvTranspose3D(Module):
     kernel_init: Any = nn.initializers.orthogonal()
     bias_init: Any = zeros_init()
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
-    epsilon: float = 1e-6
+    epsilon: float = 1e-5
     learnable_epsilon: bool = False
 
     @compact

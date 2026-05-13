@@ -36,7 +36,7 @@ class YatConv1D(tf.Module):
         use_bias: bool = True,
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
-        epsilon: float = 1e-6,
+        epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None
@@ -252,7 +252,7 @@ class YatConv2D(tf.Module):
         use_bias: bool = True,
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
-        epsilon: float = 1e-6,
+        epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None
@@ -467,7 +467,7 @@ class YatConv3D(tf.Module):
         use_bias: bool = True,
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
-        epsilon: float = 1e-6,
+        epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None
@@ -675,7 +675,7 @@ class YatConvTranspose1D(tf.Module):
         use_bias: bool = True,
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
-        epsilon: float = 1e-6,
+        epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None
@@ -876,7 +876,7 @@ class YatConvTranspose2D(tf.Module):
         use_bias: bool = True,
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
-        epsilon: float = 1e-6,
+        epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None
@@ -1065,7 +1065,7 @@ class YatConvTranspose3D(tf.Module):
         use_bias: bool = True,
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
-        epsilon: float = 1e-6,
+        epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None
