@@ -1491,8 +1491,11 @@ class YatConvTranspose1D(Layer):
         if self.weight_normalized:
             kernel_sq_sum_per_filter = ops.ones((self.filters,), dtype=kernel.dtype)
         else:
-            # Sum over all axes except filter axis (= 1 for 1D transpose)
-            kernel_sq_sum_per_filter = ops.sum(kernel ** 2, axis=(0, 2))
+            # Sum over all axes except the filter axis.
+            # Transpose conv kernel shape: (*kernel_size, filters, in_dim)
+            filter_axis = len(self.kernel_size)
+            reduce_axes = tuple(i for i in range(kernel.ndim) if i != filter_axis)
+            kernel_sq_sum_per_filter = ops.sum(kernel ** 2, axis=reduce_axes)
 
         if self.data_format == "channels_first":
             kernel_sq_sum_reshaped = ops.reshape(kernel_sq_sum_per_filter, (1, -1, 1))
@@ -1806,8 +1809,11 @@ class YatConvTranspose2D(Layer):
         if self.weight_normalized:
             kernel_sq_sum_per_filter = ops.ones((self.filters,), dtype=kernel.dtype)
         else:
-            # Sum over all axes except filter axis (= 2 for 2D transpose)
-            kernel_sq_sum_per_filter = ops.sum(kernel ** 2, axis=(0, 1, 3))
+            # Sum over all axes except the filter axis.
+            # Transpose conv kernel shape: (*kernel_size, filters, in_dim)
+            filter_axis = len(self.kernel_size)
+            reduce_axes = tuple(i for i in range(kernel.ndim) if i != filter_axis)
+            kernel_sq_sum_per_filter = ops.sum(kernel ** 2, axis=reduce_axes)
 
         if self.data_format == "channels_first":
             kernel_sq_sum_reshaped = ops.reshape(kernel_sq_sum_per_filter, (1, -1, 1, 1))
@@ -2125,12 +2131,14 @@ class YatConvTranspose3D(Layer):
         channel_axis = 1 if self.data_format == "channels_first" else -1
         patch_sq_sum_map = ops.repeat(patch_sq_sum_map_raw, self.filters, axis=channel_axis)
 
-        # Compute kernel squared sum per filter (1.0 if normalized)
-        # Kernel shape: [d, h, w, filters, input_dim] — sum over spatial (0,1,2) and input_dim (4)
+        # Compute kernel squared sum per filter (1.0 if normalized).
+        # Transpose conv kernel shape: (*kernel_size, filters, in_dim)
         if self.weight_normalized:
             kernel_sq_sum_per_filter = ops.ones((self.filters,), dtype=kernel.dtype)
         else:
-            kernel_sq_sum_per_filter = ops.sum(kernel ** 2, axis=(0, 1, 2, 4))
+            filter_axis = len(self.kernel_size)
+            reduce_axes = tuple(i for i in range(kernel.ndim) if i != filter_axis)
+            kernel_sq_sum_per_filter = ops.sum(kernel ** 2, axis=reduce_axes)
 
         if self.data_format == "channels_first":
             kernel_sq_sum_reshaped = ops.reshape(kernel_sq_sum_per_filter, (1, -1, 1, 1, 1))
