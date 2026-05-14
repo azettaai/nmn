@@ -49,6 +49,10 @@ def _as_tuple(x: Union[int, Sequence[int]], ndim: int) -> Tuple[int, ...]:
     return out
 
 
+_STR_NATIVE = {"VALID", "SAME"}
+_STR_PREPAD = {"CIRCULAR", "REFLECT", "CAUSAL"}
+
+
 def _resolve_padding(
     padding: Union[str, int, Sequence[int]],
     kernel_size: Tuple[int, ...],
@@ -56,7 +60,11 @@ def _resolve_padding(
     input_spatial: Tuple[int, ...],
     strides: Tuple[int, ...],
 ) -> Tuple[List[int], List[int]]:
-    """Return (low, high) padding lists per spatial axis for conv_general."""
+    """Return ``(low, high)`` padding lists per spatial axis for
+    ``mx.conv_general``. Caller is responsible for handling
+    CIRCULAR / REFLECT / CAUSAL modes via :func:`_prepad_input`
+    *before* calling this.
+    """
     if isinstance(padding, str):
         mode = padding.upper()
         if mode == "VALID":
@@ -79,6 +87,86 @@ def _resolve_padding(
     if len(pads) != len(kernel_size):
         raise ValueError(f"padding must have length {len(kernel_size)}")
     return (list(pads), list(pads))
+
+
+def _prepad_input(
+    x: mx.array,
+    mode: str,
+    kernel_size: Tuple[int, ...],
+    dilation: Tuple[int, ...],
+) -> mx.array:
+    """Pre-pad the input for CIRCULAR / REFLECT / CAUSAL padding.
+
+    The caller then runs the conv with VALID padding so the spatial
+    output size matches what JAX's ``conv_general_dilated`` would give
+    in the corresponding mode.
+
+    ``x`` is laid out as ``(N, *spatial, C_in)``; the spatial axes are
+    ``1..len(kernel_size)``.
+
+    CAUSAL is 1-D only — same restriction as the NNX backend.
+    """
+    mode = mode.upper()
+    if mode == "CAUSAL":
+        if len(kernel_size) != 1:
+            raise ValueError("CAUSAL padding is only defined for 1D convolutions.")
+        left = dilation[0] * (kernel_size[0] - 1)
+        # pad along axis 1 (the only spatial axis); 0 on N and C_in.
+        return mx.pad(x, [(0, 0), (left, 0), (0, 0)], mode="constant")
+
+    # CIRCULAR or REFLECT — pad symmetrically per spatial axis.
+    for axis, (k, d) in enumerate(zip(kernel_size, dilation), start=1):
+        effective_k = (k - 1) * d + 1
+        low = (effective_k - 1) // 2
+        high = effective_k // 2
+        if low == 0 and high == 0:
+            continue
+        size = x.shape[axis]
+        if mode == "CIRCULAR":
+            if low > size or high > size:
+                raise ValueError(
+                    f"CIRCULAR padding requires kernel ≤ input along axis {axis} "
+                    f"(got pad {(low, high)} for input size {size})"
+                )
+            prefix = _take_slice(x, axis, size - low, size) if low > 0 else None
+            suffix = _take_slice(x, axis, 0, high) if high > 0 else None
+        elif mode == "REFLECT":
+            if low >= size or high >= size:
+                raise ValueError(
+                    f"REFLECT padding requires kernel < input along axis {axis} "
+                    f"(got pad {(low, high)} for input size {size})"
+                )
+            # numpy 'reflect': mirror without repeating the edge.
+            # low side comes from x[1:low+1] reversed.
+            prefix = _reverse_slice(x, axis, 1, low + 1) if low > 0 else None
+            # high side comes from x[-(high+1):-1] reversed.
+            suffix = _reverse_slice(x, axis, size - high - 1, size - 1) if high > 0 else None
+        else:
+            raise ValueError(f"unknown pre-pad mode: {mode!r}")
+
+        parts: List[mx.array] = []
+        if prefix is not None:
+            parts.append(prefix)
+        parts.append(x)
+        if suffix is not None:
+            parts.append(suffix)
+        x = mx.concatenate(parts, axis=axis)
+    return x
+
+
+def _take_slice(x: mx.array, axis: int, start: int, stop: int) -> mx.array:
+    """``x[..., start:stop, ...]`` along ``axis`` using basic slicing."""
+    slicer: List[Union[slice, int]] = [slice(None)] * x.ndim
+    slicer[axis] = slice(start, stop)
+    return x[tuple(slicer)]
+
+
+def _reverse_slice(x: mx.array, axis: int, start: int, stop: int) -> mx.array:
+    """``x[..., start:stop, ...][::-1]`` along ``axis``."""
+    sliced = _take_slice(x, axis, start, stop)
+    rev: List[Union[slice, int]] = [slice(None)] * sliced.ndim
+    rev[axis] = slice(None, None, -1)
+    return sliced[tuple(rev)]
 
 
 # ---------------------------------------------------------------------------
@@ -221,10 +309,20 @@ class _YatConvBase(nn.Module):
             inputs = inputs.astype(self.dtype)
         self._maybe_build(inputs)
 
-        spatial = inputs.shape[1:-1]
-        low_pad, high_pad = _resolve_padding(
-            self.padding, self.kernel_size, self.dilation_rate, spatial, self.strides
-        )
+        # Custom padding modes (CIRCULAR / REFLECT / CAUSAL) → pre-pad and
+        # then run conv with VALID. The native VALID / SAME / int paths
+        # are handled by _resolve_padding directly.
+        if isinstance(self.padding, str) and self.padding.upper() in _STR_PREPAD:
+            inputs = _prepad_input(
+                inputs, self.padding, self.kernel_size, self.dilation_rate
+            )
+            low_pad = [0] * len(self.kernel_size)
+            high_pad = [0] * len(self.kernel_size)
+        else:
+            spatial = inputs.shape[1:-1]
+            low_pad, high_pad = _resolve_padding(
+                self.padding, self.kernel_size, self.dilation_rate, spatial, self.strides
+            )
         padding_arg = (low_pad, high_pad)
 
         kernel = self.kernel

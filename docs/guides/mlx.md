@@ -145,8 +145,18 @@ class YatCNN(nn.Module):
 ```
 
 Input layout is **channels-last** (`(N, H, W, C)`) — same as TF / Keras /
-JAX. Supported `padding`: `"valid"`, `"same"`, or an integer / tuple of
-integers for explicit symmetric padding.
+JAX. Supported `padding`:
+
+| Mode | Behaviour |
+| --- | --- |
+| `"valid"` | No padding (default). |
+| `"same"` | Symmetric padding so output spatial size = input / stride (rounded up). |
+| `"circular"` | Wrap-around (a.k.a. periodic). Pre-pads with `np.pad(..., 'wrap')` semantics. |
+| `"reflect"` | Mirror without repeating the edge. Pre-pads with `np.pad(..., 'reflect')`. |
+| `"causal"` | 1-D only: zero-pad on the left so output\[t\] only depends on input\[≤ t\]. |
+| `int` / `tuple[int]` | Explicit symmetric padding per spatial axis. |
+
+`circular` and `reflect` are implemented via `concatenate(slice + reverse-slice + slice)` since MLX's native `mx.pad` only supports `constant` and `edge` modes.
 
 ---
 
