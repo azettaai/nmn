@@ -20,6 +20,11 @@ from .rotary import (
     rotary_yat_attention,
     rotary_yat_attention_weights,
 )
+from .performer import (
+    create_yat_tp_projection,
+    yat_tp_features,
+    yat_tp_attention,
+)
 from .squashers import softermax, softer_sigmoid, soft_tanh
 
 try:
@@ -51,5 +56,8 @@ __all__ = [
     "apply_rotary_emb",
     "rotary_yat_attention",
     "rotary_yat_attention_weights",
+    "create_yat_tp_projection",
+    "yat_tp_features",
+    "yat_tp_attention",
     "softermax", "softer_sigmoid", "soft_tanh",
 ] + _conv_all

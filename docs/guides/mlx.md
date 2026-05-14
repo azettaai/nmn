@@ -165,6 +165,35 @@ y = attn(x, ctx, ctx)      # cross-attention with ctx as keys/values
 For causal LMs, build a triangular boolean mask of shape
 `(B, H, q_len, kv_len)` (`True = attend`) and pass it via `mask=`.
 
+### Spherical-YAT-Performer — linear-complexity attention
+
+For long sequences, the standard ``O(n²)`` softmax YAT attention is
+replaced by an anchor-based feature decomposition that runs in
+``O(n)``:
+
+```python
+from nmn.mlx import create_yat_tp_projection, yat_tp_attention
+import mlx.core as mx
+
+# Precompute the random projections once.
+params = create_yat_tp_projection(
+    head_dim=64,
+    num_anchor_features=32,   # P
+    num_prf_features=8,       # M
+    num_quad_nodes=1,         # R
+    seed=0,
+)
+
+q = mx.random.normal(shape=(2, 4096, 8, 64))  # long sequence
+k = mx.random.normal(shape=(2, 4096, 8, 64))
+v = mx.random.normal(shape=(2, 4096, 8, 64))
+out = yat_tp_attention(q, k, v, params, causal=False)
+```
+
+Use ``causal=True`` for autoregressive decoding (prefix sums over the
+key dimension). The total feature count is ``F = R·P·M``; memory
+crosses below quadratic attention when ``seq_len > F``.
+
 ### Rotary Position Embeddings (RoPE)
 
 ```python
