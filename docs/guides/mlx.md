@@ -221,7 +221,28 @@ for your custom modules.
 
 ---
 
-## 9. Device & precision notes
+## 9. DropConnect regularization
+
+`YatNMN`, `YatConv{1,2,3}D`, and `YatConvTranspose{1,2,3}D` all accept a
+weight-level DropConnect:
+
+```python
+layer = YatNMN(features=128, use_dropconnect=True, drop_rate=0.2)
+
+# Training mode — DropConnect is applied.
+y = layer(x, deterministic=False)
+
+# Inference / validation — pass deterministic=True (default).
+y = layer(x, deterministic=True)
+```
+
+The mask is resampled on every forward call. `weight_normalized=True`
+on conv layers skips the per-step `‖W‖²` recomputation and pairs cleanly
+with DropConnect.
+
+---
+
+## 10. Device & precision notes
 
 - **Default device is the Metal GPU** on Apple Silicon. The first kernel
   launch incurs a small JIT cost; subsequent steps are fast.
@@ -236,7 +257,7 @@ for your custom modules.
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom                                  | Likely cause                                      | Fix                                                                |
 | ---------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------ |
@@ -249,7 +270,7 @@ for your custom modules.
 
 ---
 
-## 11. Next steps
+## 12. Next steps
 
 - [Architecture & theory](../architecture.md)
 - [Migration cheat sheet](../migration.md) — switching from PyTorch / NNX / TF

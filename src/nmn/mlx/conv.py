@@ -107,6 +107,9 @@ class _YatConvBase(nn.Module):
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
         constant_alpha: Optional[Union[bool, float]] = None,
+        use_dropconnect: bool = False,
+        drop_rate: float = 0.0,
+        weight_normalized: bool = False,
         dtype: mx.Dtype = mx.float32,
         epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
@@ -118,6 +121,8 @@ class _YatConvBase(nn.Module):
             raise ValueError(f"epsilon must be positive, got {epsilon}")
         if groups < 1:
             raise ValueError(f"groups must be >= 1, got {groups}")
+        if not 0.0 <= drop_rate < 1.0:
+            raise ValueError(f"drop_rate must be in [0, 1), got {drop_rate}")
 
         self.filters = filters
         self.kernel_size = _as_tuple(kernel_size, self._ndim)
@@ -128,6 +133,9 @@ class _YatConvBase(nn.Module):
         self.dtype = dtype
         self.epsilon = epsilon
         self.learnable_epsilon = learnable_epsilon
+        self.use_dropconnect = use_dropconnect
+        self.drop_rate = drop_rate
+        self.weight_normalized = weight_normalized
 
         # Bias configuration.
         self._constant_bias_value: Optional[float] = None
@@ -203,7 +211,7 @@ class _YatConvBase(nn.Module):
     # Forward
     # ------------------------------------------------------------------
 
-    def __call__(self, inputs: mx.array) -> mx.array:
+    def __call__(self, inputs: mx.array, *, deterministic: bool = True) -> mx.array:
         if inputs.ndim != self._ndim + 2:
             raise ValueError(
                 f"expected input with {self._ndim + 2} dims "
@@ -219,10 +227,25 @@ class _YatConvBase(nn.Module):
         )
         padding_arg = (low_pad, high_pad)
 
+        kernel = self.kernel
+        # Weight normalization: normalize each filter to unit norm at forward
+        # time so the ||W||² term collapses to a constant 1 below.
+        if self.weight_normalized:
+            reduce_axes = tuple(range(1, kernel.ndim))
+            norm = mx.sqrt(
+                mx.sum(kernel * kernel, axis=reduce_axes, keepdims=True)
+            )
+            kernel = kernel / (norm + 1e-8)
+        # DropConnect on the kernel.
+        if self.use_dropconnect and not deterministic and self.drop_rate > 0.0:
+            keep_prob = 1.0 - self.drop_rate
+            dc_mask = mx.random.bernoulli(p=keep_prob, shape=kernel.shape)
+            kernel = (kernel * dc_mask.astype(kernel.dtype)) / keep_prob
+
         # Dot product map via standard cross-correlation.
         dot_prod_map = mx.conv_general(
             inputs,
-            self.kernel,
+            kernel,
             stride=list(self.strides),
             padding=padding_arg,
             kernel_dilation=list(self.dilation_rate),
@@ -254,11 +277,14 @@ class _YatConvBase(nn.Module):
         else:
             patch_sq_map = mx.repeat(patch_sq_per_group, self.filters, axis=-1)
 
-        # ||W||² per filter (sum over kernel spatial + in-channel axes).
-        kernel_sq_per_filter = mx.sum(
-            self.kernel * self.kernel,
-            axis=tuple(range(1, self.kernel.ndim)),
-        )  # shape: (filters,)
+        # ||W||² per filter — collapses to 1 in weight-normalized mode.
+        if self.weight_normalized:
+            kernel_sq_per_filter = mx.ones((self.filters,), dtype=kernel.dtype)
+        else:
+            kernel_sq_per_filter = mx.sum(
+                kernel * kernel,
+                axis=tuple(range(1, kernel.ndim)),
+            )
         kernel_sq_shape = [1] * (dot_prod_map.ndim - 1) + [self.filters]
         kernel_sq_map = mx.reshape(kernel_sq_per_filter, kernel_sq_shape)
 
@@ -317,6 +343,8 @@ class _YatConvTransposeBase(nn.Module):
         constant_bias: Optional[float] = None,
         use_alpha: bool = True,
         constant_alpha: Optional[Union[bool, float]] = None,
+        use_dropconnect: bool = False,
+        drop_rate: float = 0.0,
         dtype: mx.Dtype = mx.float32,
         epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
@@ -328,6 +356,8 @@ class _YatConvTransposeBase(nn.Module):
             )
         if epsilon <= 0:
             raise ValueError(f"epsilon must be positive, got {epsilon}")
+        if not 0.0 <= drop_rate < 1.0:
+            raise ValueError(f"drop_rate must be in [0, 1), got {drop_rate}")
 
         self.filters = filters
         self.kernel_size = _as_tuple(kernel_size, self._ndim)
@@ -339,6 +369,8 @@ class _YatConvTransposeBase(nn.Module):
         self.epsilon = epsilon
         self.learnable_epsilon = learnable_epsilon
         self.groups = 1
+        self.use_dropconnect = use_dropconnect
+        self.drop_rate = drop_rate
 
         # Bias config.
         self._constant_bias_value: Optional[float] = None
@@ -406,7 +438,7 @@ class _YatConvTransposeBase(nn.Module):
             3: mx.conv_transpose3d,
         }[self._ndim]
 
-    def __call__(self, inputs: mx.array) -> mx.array:
+    def __call__(self, inputs: mx.array, *, deterministic: bool = True) -> mx.array:
         if inputs.ndim != self._ndim + 2:
             raise ValueError(
                 f"expected input with {self._ndim + 2} dims "
@@ -435,10 +467,16 @@ class _YatConvTransposeBase(nn.Module):
 
         conv_transpose = self._conv_transpose_fn()
 
+        kernel = self.kernel
+        if self.use_dropconnect and not deterministic and self.drop_rate > 0.0:
+            keep_prob = 1.0 - self.drop_rate
+            dc_mask = mx.random.bernoulli(p=keep_prob, shape=kernel.shape)
+            kernel = (kernel * dc_mask.astype(kernel.dtype)) / keep_prob
+
         # Dot-product map.
         dot_prod_map = conv_transpose(
             inputs,
-            self.kernel,
+            kernel,
             stride=self.strides if self._ndim > 1 else self.strides[0],
             padding=pad_arg,
             dilation=self.dilation_rate if self._ndim > 1 else self.dilation_rate[0],
@@ -468,10 +506,11 @@ class _YatConvTransposeBase(nn.Module):
         patch_sq_map_one = patch_sq_filter_map[..., :1]
         patch_sq_map = mx.repeat(patch_sq_map_one, self.filters, axis=-1)
 
-        # ||W||² per filter.
+        # ||W||² per filter (uses the DropConnect-masked kernel so the
+        # distance reflects the actual weights used in dot_prod_map).
         kernel_sq_per_filter = mx.sum(
-            self.kernel * self.kernel,
-            axis=tuple(range(1, self.kernel.ndim)),
+            kernel * kernel,
+            axis=tuple(range(1, kernel.ndim)),
         )
         kernel_sq_shape = [1] * (dot_prod_map.ndim - 1) + [self.filters]
         kernel_sq_map = mx.reshape(kernel_sq_per_filter, kernel_sq_shape)

@@ -76,6 +76,8 @@ class YatNMN(nn.Module):
         use_alpha: bool = True,
         constant_alpha: Optional[Union[bool, float]] = None,
         positive_init: bool = False,
+        use_dropconnect: bool = False,
+        drop_rate: float = 0.0,
         dtype: mx.Dtype = mx.float32,
         epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
@@ -86,6 +88,8 @@ class YatNMN(nn.Module):
         super().__init__()
         if epsilon <= 0:
             raise ValueError(f"epsilon must be positive, got {epsilon}")
+        if not 0.0 <= drop_rate < 1.0:
+            raise ValueError(f"drop_rate must be in [0, 1), got {drop_rate}")
 
         self.features = features
         self.dtype = dtype
@@ -95,6 +99,8 @@ class YatNMN(nn.Module):
         self.weight_normalized = weight_normalized
         self.return_weights = return_weights
         self.positive_init = positive_init
+        self.use_dropconnect = use_dropconnect
+        self.drop_rate = drop_rate
 
         # ── Bias config ────────────────────────────────────────────────
         self._constant_bias_value: Optional[float] = None
@@ -157,7 +163,10 @@ class YatNMN(nn.Module):
     # -----------------------------------------------------------------
 
     def __call__(
-        self, inputs: mx.array
+        self,
+        inputs: mx.array,
+        *,
+        deterministic: bool = True,
     ) -> Union[mx.array, Tuple[mx.array, mx.array]]:
         if inputs.dtype != self.dtype:
             inputs = inputs.astype(self.dtype)
@@ -172,6 +181,12 @@ class YatNMN(nn.Module):
             )
 
         kernel = self.kernel
+
+        # DropConnect: randomly drop weights at the kernel level.
+        if self.use_dropconnect and not deterministic and self.drop_rate > 0.0:
+            keep_prob = 1.0 - self.drop_rate
+            dc_mask = mx.random.bernoulli(p=keep_prob, shape=kernel.shape)
+            kernel = (kernel * dc_mask.astype(kernel.dtype)) / keep_prob
 
         # Spherical: normalize inputs and each kernel row to unit norm.
         if self.spherical:
