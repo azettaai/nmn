@@ -25,6 +25,7 @@ from .performer import (
     yat_tp_features,
     yat_tp_attention,
 )
+from .fused import fused_yat_score, is_gpu_available
 from .squashers import softermax, softer_sigmoid, soft_tanh
 
 try:
@@ -59,5 +60,7 @@ __all__ = [
     "create_yat_tp_projection",
     "yat_tp_features",
     "yat_tp_attention",
+    "fused_yat_score",
+    "is_gpu_available",
     "softermax", "softer_sigmoid", "soft_tanh",
 ] + _conv_all

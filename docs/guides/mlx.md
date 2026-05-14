@@ -295,7 +295,41 @@ for your custom modules.
 
 ---
 
-## 9. DropConnect regularization
+## 9. Fused metal-kernel forward (Apple GPU only)
+
+`YatNMN` ships an opt-in fused forward that computes
+`α · (x · Wᵀ + b)² / (‖x − W‖² + ε)` in a single Metal kernel launch
+on the GPU, falling back to standard MLX ops on CPU.
+
+```python
+layer = YatNMN(features=1024, fused=True)
+y = layer(x)
+```
+
+Gradients flow through it via `mx.custom_function` — the VJP uses
+standard ops (not the kernel) and is checked against a centered
+finite-difference reference in `tests/test_mlx/test_fused.py`. The
+fused path **silently falls back to the eager forward** when an
+unsupported flag is on (`spherical`, `weight_normalized`,
+`return_weights`).
+
+The forward kernel is intentionally simple — one thread per `(batch,
+output)` element doing a manual inner product. On a 512→1024 layer
+with batch 64 this measures ~12 % faster than the eager forward on
+M-series GPUs. The win grows with `in_features × out_features`; for
+sub-1 ms layers, kernel-launch overhead dominates and you should
+leave `fused=False`.
+
+```python
+from nmn.mlx import fused_yat_score, is_gpu_available
+
+# Functional access — also benefits from the metal kernel on GPU.
+y = fused_yat_score(x, w, bias=b, alpha=mx.array([1.5]), epsilon=1e-5)
+```
+
+---
+
+## 10. DropConnect regularization
 
 `YatNMN`, `YatConv{1,2,3}D`, and `YatConvTranspose{1,2,3}D` all accept a
 weight-level DropConnect:
@@ -316,7 +350,7 @@ with DropConnect.
 
 ---
 
-## 10. Device & precision notes
+## 11. Device & precision notes
 
 - **Default device is the Metal GPU** on Apple Silicon. The first kernel
   launch incurs a small JIT cost; subsequent steps are fast.
@@ -331,7 +365,7 @@ with DropConnect.
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 | Symptom                                  | Likely cause                                      | Fix                                                                |
 | ---------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------ |
@@ -344,7 +378,7 @@ with DropConnect.
 
 ---
 
-## 12. Next steps
+## 13. Next steps
 
 - [Architecture & theory](../architecture.md)
 - [Migration cheat sheet](../migration.md) — switching from PyTorch / NNX / TF

@@ -78,6 +78,7 @@ class YatNMN(nn.Module):
         positive_init: bool = False,
         use_dropconnect: bool = False,
         drop_rate: float = 0.0,
+        fused: bool = False,
         dtype: mx.Dtype = mx.float32,
         epsilon: float = 1e-5,
         learnable_epsilon: bool = False,
@@ -101,6 +102,7 @@ class YatNMN(nn.Module):
         self.positive_init = positive_init
         self.use_dropconnect = use_dropconnect
         self.drop_rate = drop_rate
+        self.fused = fused
 
         # ── Bias config ────────────────────────────────────────────────
         self._constant_bias_value: Optional[float] = None
@@ -187,6 +189,44 @@ class YatNMN(nn.Module):
             keep_prob = 1.0 - self.drop_rate
             dc_mask = mx.random.bernoulli(p=keep_prob, shape=kernel.shape)
             kernel = (kernel * dc_mask.astype(kernel.dtype)) / keep_prob
+
+        # Fused path: skip when an option that isn't supported by the
+        # kernel is active (spherical, weight_normalized — those alter
+        # the kernel before the YAT formula, and we don't want to drift
+        # from the eager path).
+        if (
+            self.fused
+            and not self.spherical
+            and not self.weight_normalized
+            and not self.return_weights
+        ):
+            from .fused import fused_yat_score
+
+            if self.use_bias:
+                if self._constant_bias_value is not None:
+                    bias = mx.full(
+                        (self.features,), self._constant_bias_value, dtype=self.dtype
+                    )
+                else:
+                    bias = self.bias
+                    if self.softplus_bias if hasattr(self, "softplus_bias") else False:
+                        pass  # not supported in fused path
+            else:
+                bias = mx.zeros((self.features,), dtype=self.dtype)
+            if self._constant_alpha_value is not None:
+                alpha_arr = mx.array(
+                    [self._constant_alpha_value], dtype=self.dtype
+                )
+            elif self.use_alpha and getattr(self, "alpha", None) is not None:
+                alpha_arr = self.alpha
+            else:
+                alpha_arr = mx.ones((1,), dtype=self.dtype)
+            if self.learnable_epsilon and getattr(self, "epsilon_param", None) is not None:
+                eps_val = float(nn.softplus(self.epsilon_param)[0])
+            else:
+                eps_val = self.epsilon
+            return fused_yat_score(inputs, kernel, bias=bias, alpha=alpha_arr,
+                                   epsilon=eps_val)
 
         # Spherical: normalize inputs and each kernel row to unit norm.
         if self.spherical:
