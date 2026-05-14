@@ -221,6 +221,24 @@ pair. Free-form functional access through
 `precompute_freqs_cis`, `apply_rotary_emb`,
 `rotary_yat_attention_weights`, `rotary_yat_attention` for custom blocks.
 
+#### Autoregressive decoding with a KV cache
+
+```python
+attn.init_cache(batch_size=1, max_length=2048)
+out_first = attn(prompt_tokens, decode=True)          # may be many tokens
+for _ in range(generation_length):
+    next_token_embedding = ...                        # (1, 1, embed_dim)
+    out = attn(next_token_embedding, decode=True)
+attn.reset_cache()
+```
+
+`decode=True` appends new K / V to the cache, applies RoPE with the
+correct absolute positions, and uses an implicit causal mask within the
+chunk. The byte-by-byte equivalence test in
+`tests/test_mlx/test_kv_cache.py::test_decode_matches_causal_prefill_byte_identical`
+confirms full-causal-prefill and token-by-token decode produce
+identical outputs.
+
 ---
 
 ## 6. Embeddings with weight tying

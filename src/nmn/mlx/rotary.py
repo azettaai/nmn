@@ -38,6 +38,20 @@ __all__ = [
 DEFAULT_CONSTANT_ALPHA = math.sqrt(2.0)
 
 
+def _splice(cache: mx.array, new: mx.array, start: int) -> mx.array:
+    """Insert ``new`` into ``cache`` along axis 1 starting at ``start``.
+
+    Equivalent to ``jax.lax.dynamic_update_slice`` on a ``(B, T, H, D)``
+    cache: returns ``cache`` with ``cache[:, start:start + L]`` replaced
+    by ``new``. Implemented as concatenate-of-slices since MLX doesn't
+    expose an in-place scatter that lives nicely with autograd.
+    """
+    L = new.shape[1]
+    prefix = cache[:, :start]
+    suffix = cache[:, start + L:]
+    return mx.concatenate([prefix, new, suffix], axis=1)
+
+
 def precompute_freqs_cis(
     dim: int,
     max_seq_len: int,
@@ -248,6 +262,11 @@ class RotaryYatAttention(nn.Module):
         self.freqs_cos = cos_freqs
         self.freqs_sin = sin_freqs
 
+        # KV cache for autoregressive decode (populated by init_cache).
+        self.cached_key: Optional[mx.array] = None
+        self.cached_value: Optional[mx.array] = None
+        self.cache_index: int = 0
+
         self.is_built = False
 
     def build(self, input_dim: int) -> None:
@@ -281,6 +300,41 @@ class RotaryYatAttention(nn.Module):
             y = y + bias
         return y
 
+    # ------------------------------------------------------------------
+    # KV cache for autoregressive decoding
+    # ------------------------------------------------------------------
+
+    def init_cache(self, batch_size: int, max_length: Optional[int] = None) -> None:
+        """Allocate a KV cache for autoregressive decoding.
+
+        Args:
+            batch_size: Batch size of the decoding stream.
+            max_length: Maximum number of tokens to decode. Defaults to
+                ``max_seq_len``.
+        """
+        if not self.is_built:
+            raise ValueError(
+                "Module is not built yet — call it once with a real input "
+                "first so the projection shapes are known."
+            )
+        if max_length is None:
+            max_length = self.max_seq_len
+        if max_length > self.max_seq_len:
+            raise ValueError(
+                f"max_length={max_length} exceeds RoPE table size "
+                f"max_seq_len={self.max_seq_len}."
+            )
+        shape = (batch_size, max_length, self.num_heads, self.head_dim)
+        self.cached_key = mx.zeros(shape, dtype=self.dtype)
+        self.cached_value = mx.zeros(shape, dtype=self.dtype)
+        self.cache_index = 0
+
+    def reset_cache(self) -> None:
+        """Clear the KV cache."""
+        self.cached_key = None
+        self.cached_value = None
+        self.cache_index = 0
+
     def __call__(
         self,
         x: mx.array,
@@ -288,16 +342,40 @@ class RotaryYatAttention(nn.Module):
         *,
         training: bool = False,
         position_offset: int = 0,
+        decode: bool = False,
     ) -> mx.array:
+        """Run multi-head Rotary YAT attention.
+
+        When ``decode=True`` the layer appends the new tokens' K and V to
+        an internal cache (populated by ``init_cache``) and uses the
+        ``cache_index`` as the implicit ``position_offset``.
+        """
         if x.dtype != self.dtype:
             x = x.astype(self.dtype)
         if not self.is_built:
             self.build(int(x.shape[-1]))
 
         B, L, _ = x.shape
-        if position_offset + L > self.max_seq_len:
+
+        if decode:
+            if self.cached_key is None or self.cached_value is None:
+                raise ValueError(
+                    "decode=True requires init_cache() to have been called."
+                )
+            if self.cache_index + L > self.cached_key.shape[1]:
+                raise ValueError(
+                    f"KV cache full: cache_index={self.cache_index} + "
+                    f"new tokens={L} exceeds capacity "
+                    f"{self.cached_key.shape[1]}."
+                )
+            # RoPE positions for the new tokens start at cache_index.
+            effective_offset = self.cache_index
+        else:
+            effective_offset = position_offset
+
+        if effective_offset + L > self.max_seq_len:
             raise ValueError(
-                f"position_offset + seq_len = {position_offset + L} exceeds "
+                f"position_offset + seq_len = {effective_offset + L} exceeds "
                 f"max_seq_len={self.max_seq_len}. Recreate the layer with a "
                 f"larger max_seq_len."
             )
@@ -310,27 +388,89 @@ class RotaryYatAttention(nn.Module):
         k = mx.reshape(k, (B, L, self.num_heads, self.head_dim))
         v = mx.reshape(v, (B, L, self.num_heads, self.head_dim))
 
-        alpha_val = None
-        scale_val = None
-        if self.use_alpha:
-            if self._constant_alpha_value is not None:
-                scale_val = self._constant_alpha_value
-            elif getattr(self, "alpha", None) is not None:
-                alpha_val = self.alpha
+        if decode:
+            cache_old = self.cache_index
+            # Splice the new K / V into the cache and read back the full
+            # accumulated history.
+            new_key = _splice(self.cached_key, k, cache_old)
+            new_value = _splice(self.cached_value, v, cache_old)
+            self.cached_key = new_key
+            self.cached_value = new_value
+            self.cache_index = cache_old + L
+            cache_new = self.cache_index
 
-        out = rotary_yat_attention(
-            q, k, v,
-            self.freqs_cos, self.freqs_sin,
-            mask=mask,
-            dropout_rate=self.dropout if training else 0.0,
-            training=training,
-            epsilon=self.epsilon,
-            alpha=alpha_val,
-            scale=scale_val,
-            position_offset=position_offset,
-        )
+            # Rotate Q by the new tokens' positions (cache_old..cache_old+L-1)
+            # and the *full* cached K by absolute positions 0..cache_new-1.
+            q_rot = apply_rotary_emb(
+                q, self.freqs_cos, self.freqs_sin, cache_old
+            )
+            k_full = self.cached_key[:, :cache_new]
+            v_full = self.cached_value[:, :cache_new]
+            k_rot = apply_rotary_emb(k_full, self.freqs_cos, self.freqs_sin, 0)
+
+            # Build a causal mask over (L, cache_new) so token i in the
+            # chunk only sees keys up to position cache_old + i. Single-
+            # token decode (L=1) collapses to "see everything" which is
+            # already correct.
+            if L > 1:
+                i_idx = np.arange(L)[:, None]                 # (L, 1)
+                j_idx = np.arange(cache_new)[None, :]         # (1, K)
+                causal = (j_idx <= cache_old + i_idx)[None, None]
+                user_mask_np = None if mask is None else np.array(mask)
+                if user_mask_np is None:
+                    full_mask = causal
+                else:
+                    full_mask = np.logical_and(user_mask_np, causal)
+                full_mask = mx.array(
+                    np.broadcast_to(full_mask, (B, self.num_heads, L, cache_new))
+                )
+            else:
+                full_mask = mask
+
+            alpha_val, scale_val = self._alpha_pair()
+            from .attention import yat_attention_weights as _yaw
+
+            weights = _yaw(
+                q_rot, k_rot,
+                mask=full_mask,
+                dropout_rate=self.dropout if training else 0.0,
+                training=training,
+                epsilon=self.epsilon,
+                alpha=alpha_val,
+                scale=scale_val,
+                spherical=False,
+            )
+            out = mx.einsum("bhqk,bkhd->bqhd", weights, v_full)
+        else:
+            alpha_val, scale_val = self._alpha_pair()
+            out = rotary_yat_attention(
+                q, k, v,
+                self.freqs_cos, self.freqs_sin,
+                mask=mask,
+                dropout_rate=self.dropout if training else 0.0,
+                training=training,
+                epsilon=self.epsilon,
+                alpha=alpha_val,
+                scale=scale_val,
+                position_offset=effective_offset,
+            )
 
         out = mx.reshape(out, (B, L, self.embed_dim))
         if self.use_out_proj and getattr(self, "out_kernel", None) is not None:
             out = self._linear(out, self.out_kernel, getattr(self, "out_bias", None))
         return out
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _alpha_pair(self) -> Tuple[Optional[mx.array], Optional[float]]:
+        """Resolve (learnable alpha, constant scale) for the forward call."""
+        alpha_val: Optional[mx.array] = None
+        scale_val: Optional[float] = None
+        if self.use_alpha:
+            if self._constant_alpha_value is not None:
+                scale_val = self._constant_alpha_value
+            elif getattr(self, "alpha", None) is not None:
+                alpha_val = self.alpha
+        return alpha_val, scale_val
