@@ -13,6 +13,13 @@ from .attention import (
     yat_attention_weights,
     yat_attention_normalized,
 )
+from .rotary import (
+    RotaryYatAttention,
+    precompute_freqs_cis,
+    apply_rotary_emb,
+    rotary_yat_attention,
+    rotary_yat_attention_weights,
+)
 from .squashers import softermax, softer_sigmoid, soft_tanh
 
 try:
@@ -39,5 +46,10 @@ __all__ = [
     "yat_attention",
     "yat_attention_weights",
     "yat_attention_normalized",
+    "RotaryYatAttention",
+    "precompute_freqs_cis",
+    "apply_rotary_emb",
+    "rotary_yat_attention",
+    "rotary_yat_attention_weights",
     "softermax", "softer_sigmoid", "soft_tanh",
 ] + _conv_all

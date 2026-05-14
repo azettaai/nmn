@@ -165,6 +165,23 @@ y = attn(x, ctx, ctx)      # cross-attention with ctx as keys/values
 For causal LMs, build a triangular boolean mask of shape
 `(B, H, q_len, kv_len)` (`True = attend`) and pass it via `mask=`.
 
+### Rotary Position Embeddings (RoPE)
+
+```python
+from nmn.mlx import RotaryYatAttention
+import mlx.core as mx
+
+attn = RotaryYatAttention(embed_dim=512, num_heads=8, max_seq_len=2048)
+x = mx.random.normal(shape=(4, 16, 512))
+y = attn(x)                                  # adds rotary positional encoding
+y = attn(x, position_offset=128)             # caller-controlled offset
+```
+
+Composes with the standard YAT softmax over the same `(q', k')` rotation
+pair. Free-form functional access through
+`precompute_freqs_cis`, `apply_rotary_emb`,
+`rotary_yat_attention_weights`, `rotary_yat_attention` for custom blocks.
+
 ---
 
 ## 6. Embeddings with weight tying
