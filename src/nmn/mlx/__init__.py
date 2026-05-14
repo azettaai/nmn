@@ -5,6 +5,14 @@ the surface of ``nmn.tf`` / ``nmn.keras``. Requires ``mlx``.
 """
 
 from .nmn import YatNMN, YatDense
+from .embed import YatEmbed
+from .attention import (
+    MultiHeadYatAttention,
+    normalize_qk,
+    yat_attention,
+    yat_attention_weights,
+    yat_attention_normalized,
+)
 from .squashers import softermax, softer_sigmoid, soft_tanh
 
 try:
@@ -24,9 +32,12 @@ except ImportError:
     _conv_all = []
 
 __all__ = [
-    "YatNMN",
-    "YatDense",
-    "softermax",
-    "softer_sigmoid",
-    "soft_tanh",
+    "YatNMN", "YatDense",
+    "YatEmbed",
+    "MultiHeadYatAttention",
+    "normalize_qk",
+    "yat_attention",
+    "yat_attention_weights",
+    "yat_attention_normalized",
+    "softermax", "softer_sigmoid", "soft_tanh",
 ] + _conv_all
