@@ -186,7 +186,8 @@ def maclaurin_features(
 
     # mask[m, l] = l < N_m  -> (M, nmax); neutralize unused factors to 1.0
     l = tf.range(nmax, dtype=tf.int32)                       # [nmax]
-    mask = tf.expand_dims(l, 0) < tf.expand_dims(degrees, 1)  # [M, nmax]
+    # Cast degrees to int32 too so the comparison never mixes int32/int64.
+    mask = tf.expand_dims(l, 0) < tf.cast(tf.expand_dims(degrees, 1), tf.int32)  # [M, nmax]
     mask = tf.reshape(mask, [1] * (len(proj.shape) - 2) + [M, nmax])
     proj = tf.where(mask, proj, tf.ones_like(proj))
 

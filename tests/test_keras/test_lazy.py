@@ -106,22 +106,34 @@ def test_lazy_training_step_kernel_unchanged():
     kernel_before = np.array(layer.kernel)
     bias_before = np.array(layer.bias)
     alpha_before = np.array(layer.alpha)
-    eps_before = np.array(layer.epsilon_param)
+
+    # epsilon_param initializes at inverse-softplus(1e-5) ≈ -11.5, a saturated
+    # point where the softplus gradient is ~1e-5, so its *value* barely moves in
+    # a couple of SGD steps. The property #37 requires is that epsilon stays
+    # trainable (receives a real gradient), not frozen — assert that directly
+    # rather than a fragile value-change threshold.
+    names = [w.name for w in layer.trainable_weights]
+    eps_idx = next(i for i, n in enumerate(names) if "epsilon" in n)
 
     opt = keras.optimizers.SGD(learning_rate=0.1)
+    eps_grad_seen = False
     for _ in range(2):
         with tf.GradientTape() as tape:
             pred = layer(x)
             loss = tf.reduce_mean(tf.square(pred - y))
         grads = tape.gradient(loss, layer.trainable_weights)
+        g_eps = grads[eps_idx]
+        if g_eps is not None and float(tf.reduce_max(tf.abs(g_eps))) > 0.0:
+            eps_grad_seen = True
         opt.apply_gradients(zip(grads, layer.trainable_weights))
 
-    # Kernel untouched.
+    # Kernel untouched (frozen).
     np.testing.assert_allclose(kernel_before, np.array(layer.kernel), atol=1e-7)
-    # Bias / alpha / epsilon moved.
+    # Bias / alpha moved (healthy gradients).
     assert not np.allclose(bias_before, np.array(layer.bias), atol=1e-7)
     assert not np.allclose(alpha_before, np.array(layer.alpha), atol=1e-7)
-    assert not np.allclose(eps_before, np.array(layer.epsilon_param), atol=1e-7)
+    # Epsilon is trainable: it received a real (non-None, non-zero) gradient.
+    assert eps_grad_seen, "epsilon_param did not receive a gradient (wrongly frozen)"
 
 
 def test_eager_training_step_kernel_changes():

@@ -201,8 +201,9 @@ def maclaurin_features(
     proj = ops.einsum("...d,mld->...ml", x, omegas)
 
     # mask[m, l] = l < N_m  →  (M, nmax); neutralize unused factors with 1.0.
-    l = ops.arange(nmax)
-    mask = ops.expand_dims(l, 0) < ops.expand_dims(degrees, 1)   # (M, nmax)
+    # Cast both sides to int32 so the comparison never mixes int32/int64.
+    l = ops.cast(ops.arange(nmax), "int32")
+    mask = ops.expand_dims(l, 0) < ops.cast(ops.expand_dims(degrees, 1), "int32")
     mask = ops.cast(mask, "bool")
     proj = ops.where(mask, proj, ops.ones_like(proj))
 
