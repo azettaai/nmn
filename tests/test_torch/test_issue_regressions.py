@@ -20,17 +20,74 @@ from nmn.torch import (
 
 def test_tied_dense_construction_preserves_live_peer():
     YatNMN._KERNEL_BANKS.clear()
-    first = YatNMN(4, 2, tie_kernel_bank=True, kernel_bank_id="issue-71")
+    first = YatNMN(
+        4, 2, tie_kernel_bank=True, kernel_bank_size=3,
+        kernel_bank_id="issue-71",
+    )
     x = torch.randn(3, 4)
     weight_before = first.weight.detach().clone()
     output_before = first(x).detach().clone()
 
     second = YatNMN(4, 3, tie_kernel_bank=True, kernel_bank_id="issue-71")
 
-    torch.testing.assert_close(first.weight[:2], weight_before)
+    torch.testing.assert_close(first.weight, weight_before)
     torch.testing.assert_close(first(x), output_before)
     assert second.weight is first.weight
     assert first.weight.requires_grad
+
+
+def test_tied_dense_rejects_expansion_without_mutating_stale_gradient():
+    YatNMN._KERNEL_BANKS.clear()
+    first = YatNMN(
+        4, 2, tie_kernel_bank=True, alpha=False, bias=False,
+        kernel_bank_id="issue-71-stale-grad",
+    )
+    first(torch.randn(3, 4)).sum().backward()
+    parameter = first.weight
+    value_before = parameter.detach().clone()
+    gradient_before = parameter.grad.detach().clone()
+
+    with pytest.raises(ValueError, match="immutable capacity"):
+        YatNMN(
+            4, 3, tie_kernel_bank=True, alpha=False, bias=False,
+            kernel_bank_id="issue-71-stale-grad",
+        )
+
+    assert first.weight is parameter
+    torch.testing.assert_close(first.weight, value_before)
+    torch.testing.assert_close(first.weight.grad, gradient_before)
+
+
+def test_tied_dense_rejects_expansion_without_mutating_adam_state():
+    YatNMN._KERNEL_BANKS.clear()
+    first = YatNMN(
+        4, 2, tie_kernel_bank=True, alpha=False, bias=False,
+        kernel_bank_id="issue-71-adam",
+    )
+    optimizer = torch.optim.Adam(first.parameters(), lr=1e-3)
+    first(torch.randn(3, 4)).sum().backward()
+    optimizer.step()
+    parameter = first.weight
+    value_before = parameter.detach().clone()
+    state_before = {
+        key: value.detach().clone() if torch.is_tensor(value) else value
+        for key, value in optimizer.state[parameter].items()
+    }
+
+    with pytest.raises(ValueError, match="immutable capacity"):
+        YatNMN(
+            4, 3, tie_kernel_bank=True, alpha=False, bias=False,
+            kernel_bank_id="issue-71-adam",
+        )
+
+    assert first.weight is parameter
+    torch.testing.assert_close(first.weight, value_before)
+    for key, expected in state_before.items():
+        actual = optimizer.state[parameter][key]
+        if torch.is_tensor(expected):
+            torch.testing.assert_close(actual, expected)
+        else:
+            assert actual == expected
 
 
 def test_tied_dense_rejects_incompatible_lazy_consumer():
@@ -63,6 +120,8 @@ def test_tied_conv_bank_accumulates_gradients_and_uses_actual_bias_width(
         kernel_bank_id=bank_id,
     )
     assert narrow.weight is wide.weight
+    assert narrow.out_channels == 2
+    assert wide.out_channels == 4
     assert narrow.bias.shape == (2,)
     assert wide.bias.shape == (4,)
 
@@ -92,6 +151,65 @@ def test_tied_conv_bank_accumulates_gradients_and_uses_actual_bias_width(
     assert torch.count_nonzero(narrow.weight.grad[2:]) > 0
     optimizer.step()
     assert not torch.equal(before, narrow.weight)
+
+
+@pytest.mark.parametrize(
+    ("conv_cls", "input_shape"),
+    [
+        (YatConv1D, (1, 2, 3)),
+        (YatConv2D, (1, 2, 2, 2)),
+        (YatConv3D, (1, 2, 2, 2, 2)),
+    ],
+)
+def test_tied_conv_rejects_expansion_without_mutating_adam_state(
+    conv_cls, input_shape
+):
+    conv_cls._KERNEL_BANKS.clear()
+    bank_id = f"issue-72-immutable-{conv_cls.__name__}"
+    first = conv_cls(
+        2, 2, 1, tie_kernel_bank=True, bias=False, use_alpha=False,
+        kernel_bank_id=bank_id,
+    )
+    optimizer = torch.optim.Adam(first.parameters(), lr=1e-3)
+    first(torch.randn(*input_shape)).sum().backward()
+    optimizer.step()
+    parameter = first.weight
+    value_before = parameter.detach().clone()
+    state_before = {
+        key: value.detach().clone() if torch.is_tensor(value) else value
+        for key, value in optimizer.state[parameter].items()
+    }
+
+    with pytest.raises(ValueError, match="immutable capacity"):
+        conv_cls(
+            2, 4, 1, tie_kernel_bank=True, bias=False, use_alpha=False,
+            kernel_bank_id=bank_id,
+        )
+
+    assert first.weight is parameter
+    assert first.out_channels == 2
+    torch.testing.assert_close(first.weight, value_before)
+    for key, expected in state_before.items():
+        torch.testing.assert_close(optimizer.state[parameter][key], expected)
+
+
+@pytest.mark.parametrize("conv_cls", [YatConv1D, YatConv2D, YatConv3D])
+def test_tied_conv_bank_is_device_scoped_and_preserves_public_width(conv_cls):
+    conv_cls._KERNEL_BANKS.clear()
+    bank_id = f"issue-72-device-{conv_cls.__name__}"
+    cpu_layer = conv_cls(
+        2, 2, 1, tie_kernel_bank=True, kernel_bank_size=4,
+        kernel_bank_id=bank_id, device="cpu",
+    )
+    meta_layer = conv_cls(
+        2, 2, 1, tie_kernel_bank=True, kernel_bank_size=4,
+        kernel_bank_id=bank_id, device="meta",
+    )
+
+    assert cpu_layer.weight.device.type == "cpu"
+    assert meta_layer.weight.device.type == "meta"
+    assert cpu_layer.weight is not meta_layer.weight
+    assert cpu_layer.out_channels == meta_layer.out_channels == 2
 
 
 def test_attention_compute_and_parameter_dtypes_round_trip():

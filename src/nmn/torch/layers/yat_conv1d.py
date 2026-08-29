@@ -1,5 +1,4 @@
 # mypy: allow-untyped-defs
-import logging
 import math
 from typing import Optional, Union
 
@@ -12,8 +11,6 @@ from torch.nn.parameter import Parameter
 from torch.nn import Conv1d
 
 from ._yat_conv_core import setup_yat_attrs, yat_conv_forward
-
-logger = logging.getLogger(__name__)
 
 __all__ = ["YatConv1D"]
 
@@ -78,6 +75,11 @@ class YatConv1D(Conv1d):
         # Handle shared kernel bank
         if tie_kernel_bank:
             bank_out_channels = kernel_bank_size or out_channels
+            if bank_out_channels < out_channels:
+                raise ValueError(
+                    f"kernel_bank_size ({bank_out_channels}) must be at least "
+                    f"out_channels ({out_channels})"
+                )
         else:
             bank_out_channels = out_channels
 
@@ -115,30 +117,23 @@ class YatConv1D(Conv1d):
         
         # Handle auto-expanding shared kernel bank
         if tie_kernel_bank:
-            bank_key = (kernel_bank_id, in_channels, kernel_size, groups, storage_dtype)
+            bank_key = (
+                kernel_bank_id, in_channels, tuple(self.kernel_size), groups,
+                storage_dtype, self.weight.device,
+            )
             shared_weight = YatConv1D._KERNEL_BANKS.get(bank_key)
 
             if shared_weight is None:
                 # First layer: register the weight as shared
                 YatConv1D._KERNEL_BANKS[bank_key] = self.weight
             else:
-                # Bank exists: auto-expand if needed
                 existing_channels = shared_weight.shape[0]
                 if bank_out_channels > existing_channels:
-                    # Auto-expand: pad with new random initialization
-                    logger.info("Auto-expanding kernel bank '%s': %d -> %d filters",
-                                kernel_bank_id, existing_channels, bank_out_channels)
-                    old_weight = shared_weight.data
-                    # Create new weight with expanded size
-                    new_weight = torch.empty(
-                        (bank_out_channels,) + old_weight.shape[1:],
-                        dtype=storage_dtype,
-                        device=old_weight.device
+                    raise ValueError(
+                        f"kernel bank '{kernel_bank_id}' has immutable capacity "
+                        f"{existing_channels}, requested {bank_out_channels}; create "
+                        "the first consumer with a sufficient kernel_bank_size"
                     )
-                    nn.init.kaiming_uniform_(new_weight, nonlinearity='relu')
-                    # Copy old weights
-                    new_weight[:existing_channels].copy_(old_weight)
-                    shared_weight.data = new_weight
                     
                 self.weight = shared_weight
 
@@ -149,6 +144,8 @@ class YatConv1D(Conv1d):
                 fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
                 bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
                 nn.init.uniform_(self.bias, -bound, bound)
+
+        self.out_channels = out_channels
 
         setup_yat_attrs(
             self,

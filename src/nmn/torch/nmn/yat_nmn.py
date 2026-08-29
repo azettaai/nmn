@@ -1,6 +1,5 @@
 # mypy: allow-untyped-defs
 """YatNMN - Yet Another Transformation Neural Matter Network."""
-import logging
 import math
 import threading
 from typing import Optional, Union
@@ -8,8 +7,6 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-logger = logging.getLogger(__name__)
 
 __all__ = ["YatNMN"]
 
@@ -133,6 +130,11 @@ class YatNMN(nn.Module):
         if tie_kernel_bank:
             # Auto-calculate bank size
             bank_out_features = kernel_bank_size or out_features
+            if bank_out_features < out_features:
+                raise ValueError(
+                    f"kernel_bank_size ({bank_out_features}) must be at least "
+                    f"out_features ({out_features})"
+                )
             bank_key = (kernel_bank_id, in_features, param_dtype, id(kernel_init), positive_init)
 
             with YatNMN._KERNEL_BANKS_LOCK:
@@ -151,25 +153,13 @@ class YatNMN(nn.Module):
                             "setting because they share one Parameter"
                         )
                     initialize_kernel = False
-                    # Bank exists: auto-expand if needed
                     existing_size = shared_weight.shape[0]
                     if bank_out_features > existing_size:
-                        # Auto-expand: pad with new random initialization
-                        logger.info("Auto-expanding kernel bank '%s': %d -> %d neurons",
-                                    kernel_bank_id, existing_size, bank_out_features)
-                        old_weight = shared_weight.data
-                        new_weight = torch.empty(
-                            (bank_out_features, in_features),
-                            dtype=param_dtype,
-                            device=old_weight.device
+                        raise ValueError(
+                            f"kernel bank '{kernel_bank_id}' has immutable capacity "
+                            f"{existing_size}, requested {bank_out_features}; create "
+                            "the first consumer with a sufficient kernel_bank_size"
                         )
-                        kernel_init(new_weight)
-                        if positive_init:
-                            new_weight.abs_()
-                        # Copy old weights
-                        new_weight[:existing_size].copy_(old_weight)
-                        shared_weight.data = new_weight
-                        YatNMN._KERNEL_BANKS[bank_key] = shared_weight
                     self.weight = shared_weight
 
             self._kernel_slice = slice(0, out_features)
