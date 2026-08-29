@@ -379,6 +379,49 @@ def test_tied_conv_attachment_rejects_stale_registry_dtype():
         )
 
 
+def test_yat_nmn_device_constructor_covers_all_owned_state_and_default():
+    default_layer = YatNMN(4, 2, learnable_epsilon=True)
+    assert default_layer.weight.device.type == "cpu"
+    assert all(value.device.type == "cpu" for value in default_layer.state_dict().values())
+
+    meta_layer = YatNMN(
+        4, 2, learnable_epsilon=True, device="meta", param_dtype=torch.float64
+    )
+    state = meta_layer.state_dict()
+    assert set(state) == {"weight", "alpha", "bias", "epsilon_param"}
+    assert all(value.device.type == "meta" for value in state.values())
+    assert all(value.dtype == torch.float64 for value in state.values())
+
+
+def test_tied_yat_nmn_banks_are_device_separated_and_constructor_route_runs():
+    YatNMN._KERNEL_BANKS.clear()
+    bank_id = "issue-71-device-constructor"
+    cpu_layer = YatNMN(
+        4, 2, tie_kernel_bank=True, learnable_epsilon=True,
+        kernel_bank_id=bank_id, device="cpu", dtype=torch.float32,
+        param_dtype=torch.float64,
+    )
+    meta_layer = YatNMN(
+        4, 2, tie_kernel_bank=True, learnable_epsilon=True,
+        kernel_bank_id=bank_id, device="meta", dtype=torch.float32,
+        param_dtype=torch.float64,
+    )
+
+    assert cpu_layer.weight is not meta_layer.weight
+    assert all(value.device.type == "cpu" for value in cpu_layer.state_dict().values())
+    assert all(value.device.type == "meta" for value in meta_layer.state_dict().values())
+    output = cpu_layer(torch.randn(3, 4, dtype=torch.float32))
+    assert output.device.type == "cpu"
+    assert output.dtype == torch.float32
+
+
+def test_untied_yat_nmn_supports_constructor_device_and_later_migration():
+    layer = YatNMN(4, 2, learnable_epsilon=True, device="cpu")
+    migrated = layer.to(dtype=torch.float64)
+    assert migrated is layer
+    assert all(value.dtype == torch.float64 for value in layer.state_dict().values())
+
+
 def test_attention_compute_and_parameter_dtypes_round_trip():
     torch.manual_seed(0)
     layer = MultiHeadYatAttention(

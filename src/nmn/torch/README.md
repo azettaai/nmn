@@ -234,7 +234,8 @@ Because PyTorch applies `.to()`, `.float()`, `.double()`, and similar operations
 one module at a time, they cannot safely migrate a class-level shared bank.
 Tied consumers therefore reject post-construction device/dtype migration with
 `RuntimeError`; construct every tied layer with its target `device`, `dtype`, or
-`param_dtype`. Non-tied layers retain normal migration behavior.
+`param_dtype`. `YatNMN` and all tied convolution layers accept `device=` for
+this purpose. Non-tied layers retain normal migration behavior.
 
 **Output:**
 ```
@@ -654,6 +655,7 @@ YatNMN(
     tie_kernel_bank: bool = False,
     kernel_bank_size: Optional[int] = None,
     kernel_bank_id: str = 'default',
+    device=None,
 )
 ```
 

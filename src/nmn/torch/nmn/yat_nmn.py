@@ -38,6 +38,9 @@ class YatNMN(nn.Module):
             If None (default), use learnable alpha when alpha=True.
         dtype (torch.dtype): Data type for computation (default: infer from input and params).
         param_dtype (torch.dtype): Data type for parameter initialization (default: float32).
+        device: Device for parameter initialization. Tied consumers must be
+            constructed on their final device because post-construction
+            migration is intentionally rejected.
         epsilon (float): Small constant to avoid division by zero
         learnable_epsilon (bool): If True, epsilon becomes a learnable parameter passed
             through softplus to guarantee strict positivity (default: False).
@@ -92,7 +95,8 @@ class YatNMN(nn.Module):
         kernel_bank_id: str = 'default',
         kernel_init: callable = None,
         bias_init: callable = None,
-        alpha_init: callable = None
+        alpha_init: callable = None,
+        device=None,
     ):
         super().__init__()
 
@@ -109,7 +113,7 @@ class YatNMN(nn.Module):
             # Initialize so that softplus(raw) ≈ epsilon: raw = log(exp(eps) - 1)
             raw_eps = math.log(math.exp(epsilon) - 1.0)
             self.epsilon_param = nn.Parameter(
-                torch.full((1,), raw_eps, dtype=param_dtype)
+                torch.full((1,), raw_eps, dtype=param_dtype, device=device)
             )
         else:
             self.register_parameter('epsilon_param', None)
@@ -137,7 +141,7 @@ class YatNMN(nn.Module):
                     f"kernel_bank_size ({bank_out_features}) must be at least "
                     f"out_features ({out_features})"
                 )
-            bank_device = torch.empty((), dtype=param_dtype).device
+            bank_device = torch.empty((), dtype=param_dtype, device=device).device
             bank_key = (
                 kernel_bank_id, in_features, param_dtype, bank_device,
                 id(kernel_init), positive_init,
@@ -149,7 +153,8 @@ class YatNMN(nn.Module):
                     # First layer: create bank
                     self.weight = nn.Parameter(torch.empty(
                         (bank_out_features, in_features),
-                        dtype=param_dtype
+                        dtype=param_dtype,
+                        device=bank_device,
                     ))
                     YatNMN._KERNEL_BANKS[bank_key] = self.weight
                     YatNMN._KERNEL_BANK_USED[bank_key] = False
@@ -191,7 +196,8 @@ class YatNMN(nn.Module):
             # Create weight parameter (non-shared)
             self.weight = nn.Parameter(torch.empty(
                 (out_features, in_features),
-                dtype=param_dtype
+                dtype=param_dtype,
+                device=device,
             ))
 
         # Handle alpha configuration
@@ -214,7 +220,8 @@ class YatNMN(nn.Module):
         elif alpha:
             self.alpha = nn.Parameter(torch.ones(
                 (1,),
-                dtype=param_dtype
+                dtype=param_dtype,
+                device=device,
             ))
         else:
             self.register_parameter('alpha', None)
@@ -231,7 +238,8 @@ class YatNMN(nn.Module):
             bias_shape = (1,) if scalar_bias else (out_features,)
             self.bias = nn.Parameter(torch.empty(
                 bias_shape,
-                dtype=param_dtype
+                dtype=param_dtype,
+                device=device,
             ))
         else:
             self.register_parameter('bias', None)
