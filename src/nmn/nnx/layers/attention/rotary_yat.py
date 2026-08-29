@@ -110,7 +110,7 @@ def apply_rotary_emb(
     x: Array,
     freqs_cos: Array,
     freqs_sin: Array,
-    position_offset: int = 0,
+    position_offset: int | Array = 0,
 ) -> Array:
     """Applies Rotary Position Embeddings to input tensor.
 
@@ -138,7 +138,10 @@ def apply_rotary_emb(
 
     # Bounds check: precomputed tables have a fixed length.
     max_seq_len = freqs_cos.shape[0]
-    if position_offset + seq_len > max_seq_len:
+    if (
+        not isinstance(position_offset, jax.core.Tracer)
+        and int(position_offset) + seq_len > max_seq_len
+    ):
         raise ValueError(
             f"Rotary frequencies were precomputed for max_seq_len={max_seq_len}, "
             f"but position_offset + seq_len = {position_offset + seq_len} exceeds it. "
@@ -148,8 +151,14 @@ def apply_rotary_emb(
 
     # Slice frequencies for the current sequence
     # freqs shape: [seq_len, head_dim//2]
-    freqs_cos = freqs_cos[position_offset : position_offset + seq_len]
-    freqs_sin = freqs_sin[position_offset : position_offset + seq_len]
+    # dynamic_slice_in_dim accepts a traced cache index, so incremental decode
+    # remains compatible with nnx.jit.
+    freqs_cos = jax.lax.dynamic_slice_in_dim(
+        freqs_cos, position_offset, seq_len, axis=0
+    )
+    freqs_sin = jax.lax.dynamic_slice_in_dim(
+        freqs_sin, position_offset, seq_len, axis=0
+    )
 
     # Split x into even and odd components
     # x shape: [..., seq_len, num_heads, head_dim]
@@ -192,6 +201,7 @@ def rotary_yat_attention_weights(
     position_offset: int = 0,
     alpha: Optional[Array] = None,
     normalization: str = "softmax",
+    key_position_offset: int | Array | None = None,
 ) -> Array:
     """Computes Rotary YAT attention weights.
 
@@ -206,6 +216,8 @@ def rotary_yat_attention_weights(
         mask: Optional attention mask.
         epsilon: Numerical stability constant.
         position_offset: Starting position for RoPE.
+        key_position_offset: Optional independent starting position for keys;
+            used when a one-token decoded query attends over a full key cache.
         alpha: Optional alpha scaling parameter.
         normalization: ``"softmax"`` (default), ``"l1"``, or ``"softermax"``.
 
@@ -213,8 +225,10 @@ def rotary_yat_attention_weights(
         Attention weights of shape [..., num_heads, q_length, kv_length].
     """
     # Apply RoPE to query and key
+    if key_position_offset is None:
+        key_position_offset = position_offset
     query_rotated = apply_rotary_emb(query, freqs_cos, freqs_sin, position_offset)
-    key_rotated = apply_rotary_emb(key, freqs_cos, freqs_sin, position_offset)
+    key_rotated = apply_rotary_emb(key, freqs_cos, freqs_sin, key_position_offset)
 
     # Compute YAT attention weights on rotated Q, K
     return yat_attention_weights(
@@ -258,6 +272,7 @@ def rotary_yat_attention(
     position_offset: int = 0,
     alpha: Optional[Array] = None,
     normalization: str = "softmax",
+    key_position_offset: int | Array | None = None,
 ) -> Array:
     """Computes Rotary YAT attention: RoPE + YAT formula + V weighted sum.
 
@@ -266,6 +281,7 @@ def rotary_yat_attention(
         freqs_cos, freqs_sin: RoPE frequencies.
         epsilon: Numerical stability constant.
         position_offset: Starting position for RoPE.
+        key_position_offset: Optional independent starting position for keys.
         alpha: Optional alpha scaling parameter.
         normalization: ``"softmax"`` (default), ``"l1"``, or ``"softermax"``.
 
@@ -296,6 +312,7 @@ def rotary_yat_attention(
         position_offset=position_offset,
         alpha=alpha,
         normalization=normalization,
+        key_position_offset=key_position_offset,
     )
 
     # Return weighted sum over values
@@ -326,6 +343,7 @@ def rotary_yat_performer_attention(
     normalize_inputs: bool = True,
     alpha: Optional[Array] = None,
     gradient_scaling: bool = True,
+    key_position_offset: int | Array | None = None,
 ) -> Array:
     """Computes Rotary YAT Performer attention using Multi-Scale TP-PRF.
 
@@ -338,8 +356,10 @@ def rotary_yat_performer_attention(
     dtype = query.dtype
 
     # Apply RoPE first
+    if key_position_offset is None:
+        key_position_offset = position_offset
     query_rotated = apply_rotary_emb(query, freqs_cos, freqs_sin, position_offset)
-    key_rotated = apply_rotary_emb(key, freqs_cos, freqs_sin, position_offset)
+    key_rotated = apply_rotary_emb(key, freqs_cos, freqs_sin, key_position_offset)
 
     # Normalize to unit vectors (required for YAT approximation)
     if normalize_inputs:
@@ -355,6 +375,7 @@ def rotary_yat_performer_attention(
         epsilon=epsilon,
         precision=precision,
         gradient_scaling=gradient_scaling,
+        mask=mask,
     )
 
     # Apply alpha scaling
@@ -684,9 +705,9 @@ class RotaryYatAttention(Module):
             self.key_ln = None
 
         # Cache for autoregressive decoding
-        self.cached_key: nnx.Cache[Array] | None = None
-        self.cached_value: nnx.Cache[Array] | None = None
-        self.cache_index: nnx.Cache[Array] | None = None
+        self.cached_key: nnx.Cache[Array] | None = nnx.data(None)
+        self.cached_value: nnx.Cache[Array] | None = nnx.data(None)
+        self.cache_index: nnx.Cache[Array] | None = nnx.data(None)
 
     def __call__(
         self,
@@ -715,6 +736,12 @@ class RotaryYatAttention(Module):
         """
         batch_size, seq_len, _ = x.shape
 
+        if decode and self.use_performer:
+            raise ValueError(
+                "Incremental decode is not supported in Performer mode; "
+                "use quadratic attention for cached decoding."
+            )
+
         # Project to Q, K, V
         q = self.q_proj(x)
         k = self.k_proj(x)
@@ -733,12 +760,36 @@ class RotaryYatAttention(Module):
 
         # Handle autoregressive decoding
         if decode:
-            if self.cached_key is None or self.cached_value is None:
+            if (
+                self.cached_key is None
+                or self.cached_value is None
+                or self.cache_index is None
+            ):
                 raise ValueError(
                     "Cache not initialized. Call init_cache first."
                 )
 
             cur_index = self.cache_index[...]
+            if seq_len != 1:
+                raise ValueError(
+                    f"Autoregressive decode expects one token, got seq_len={seq_len}."
+                )
+            expected_shape = (
+                self.cached_key.shape[0], 1, self.num_heads, self.head_dim
+            )
+            if k.shape != expected_shape:
+                raise ValueError(
+                    f"Autoregressive cache shape error, expected key shape "
+                    f"{expected_shape} instead got {k.shape}."
+                )
+            if (
+                not isinstance(cur_index, jax.core.Tracer)
+                and int(cur_index) >= self.cached_key.shape[1]
+            ):
+                raise ValueError(
+                    f"Autoregressive cache is full at length "
+                    f"{self.cached_key.shape[1]}."
+                )
             # Update cache
             indices = (0, cur_index, 0, 0)
             k_cached = jax.lax.dynamic_update_slice(
@@ -747,9 +798,9 @@ class RotaryYatAttention(Module):
             v_cached = jax.lax.dynamic_update_slice(
                 self.cached_value[...], v, indices
             )
-            self.cached_key.value = k_cached
-            self.cached_value.value = v_cached
-            self.cache_index.value += 1
+            self.cached_key[...] = k_cached
+            self.cached_value[...] = v_cached
+            self.cache_index[...] += 1
 
             k = k_cached
             v = v_cached
@@ -763,7 +814,12 @@ class RotaryYatAttention(Module):
                     (batch_size, 1, 1, max_length),
                 ),
             )
-            position_offset = 0  # Use full cache positions
+            # The one-token query is at the current decode position, while the
+            # complete cached key sequence occupies positions starting at zero.
+            position_offset = cur_index
+            key_position_offset = 0
+        else:
+            key_position_offset = position_offset
 
         # Get RoPE frequencies
         freqs_cos = jax.device_put(self.freqs_cos[...])
@@ -828,12 +884,13 @@ class RotaryYatAttention(Module):
                 causal=self.causal,
                 normalize_inputs=self.performer_normalize,
                 alpha=alpha_value,
+                key_position_offset=key_position_offset,
             )
         elif self.use_performer:
             # MAY / RAY performer: bias-aware Random Maclaurin / radial features.
             # Apply RoPE then dispatch to the matching linear-attention readout.
             q_rot = apply_rotary_emb(q, freqs_cos, freqs_sin, position_offset)
-            k_rot = apply_rotary_emb(k, freqs_cos, freqs_sin, position_offset)
+            k_rot = apply_rotary_emb(k, freqs_cos, freqs_sin, key_position_offset)
 
             # Rebuild the param dict from the generic cache + meta store.
             performer_params = {
@@ -846,12 +903,14 @@ class RotaryYatAttention(Module):
                     q_rot, k_rot, v, performer_params,
                     causal=self.causal,
                     precision=self.precision,
+                    mask=mask,
                 )
             else:  # radial
                 output = radial_yat_attention(
                     q_rot, k_rot, v, performer_params,
                     causal=self.causal,
                     precision=self.precision,
+                    mask=mask,
                 )
 
             # Apply learnable alpha scaling (matches the SLAY path behavior).
@@ -884,6 +943,7 @@ class RotaryYatAttention(Module):
                 position_offset=position_offset,
                 alpha=alpha_value,
                 normalization=self.normalization,
+                key_position_offset=key_position_offset,
             )
 
         # Apply constant alpha as direct scale (e.g. sqrt(2))
@@ -911,4 +971,3 @@ class RotaryYatAttention(Module):
         self.cached_key = nnx.Cache(jnp.zeros(cache_shape, dtype))
         self.cached_value = nnx.Cache(jnp.zeros(cache_shape, dtype))
         self.cache_index = nnx.Cache(jnp.array(0, dtype=jnp.int32))
-

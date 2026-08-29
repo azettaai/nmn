@@ -218,6 +218,7 @@ def _linear_readout(
     causal: bool,
     epsilon: float,
     precision: PrecisionLike,
+    mask: Array | None = None,
 ) -> Array:
     """Feature-map-agnostic linear-attention readout.
 
@@ -231,6 +232,29 @@ def _linear_readout(
     NOTE: the features are sign-indefinite, so a small epsilon is added only to
     the **denominator** (never to the features) for division stability.
     """
+    if mask is not None:
+        mask = jnp.asarray(mask, dtype=jnp.bool_)
+        if mask.ndim < 3 or mask.shape[-2] != 1:
+            raise ValueError(
+                "Linear YAT attention only supports key-padding masks with "
+                "shape [..., heads, 1, kv_length]; use causal=True for causal masks."
+            )
+        if mask.shape[-1] not in (1, k_feat.shape[-3]):
+            raise ValueError(
+                f"Mask key length {mask.shape[-1]} is incompatible with "
+                f"kv_length {k_feat.shape[-3]}."
+            )
+        # [..., H, 1, K] -> [..., K, H, 1], broadcast over feature dim.
+        key_mask = jnp.swapaxes(jnp.squeeze(mask, axis=-2), -1, -2)[..., None]
+        try:
+            key_mask = jnp.broadcast_to(key_mask, k_feat.shape[:-1] + (1,))
+        except ValueError as exc:
+            raise ValueError(
+                f"Mask shape {mask.shape} is not broadcastable to key shape "
+                f"{k_feat.shape}."
+            ) from exc
+        k_feat = jnp.where(key_mask, k_feat, 0.0)
+
     if causal:
         kv = jnp.einsum("...khm,...khd->...khmd", k_feat, value, precision=precision)
         kv_cum = jnp.cumsum(kv, axis=-4)
@@ -262,6 +286,7 @@ def maclaurin_yat_attention(
     epsilon: float = 1e-6,
     precision: PrecisionLike = None,
     gradient_scaling: bool = True,
+    mask: Array | None = None,
 ) -> Array:
     """Compute spherical Yat attention using MAY (Random Maclaurin) features.
 
@@ -279,6 +304,9 @@ def maclaurin_yat_attention(
         epsilon: Denominator stability constant (added to the denominator only).
         precision: JAX precision.
         gradient_scaling: Unused, kept for API compatibility with SLAY.
+        mask: Optional key-padding mask of shape
+            ``[..., heads, 1, kv_length]``. General query-dependent masks are
+            rejected because they cannot be represented by linear reordering.
 
     Returns:
         Output ``[..., q_length, num_heads, v_dim]``.
@@ -288,4 +316,4 @@ def maclaurin_yat_attention(
     q_feat = maclaurin_features(query, params, normalize=True)
     k_feat = maclaurin_features(key, params, normalize=True)
 
-    return _linear_readout(q_feat, k_feat, value, causal, epsilon, precision)
+    return _linear_readout(q_feat, k_feat, value, causal, epsilon, precision, mask)
