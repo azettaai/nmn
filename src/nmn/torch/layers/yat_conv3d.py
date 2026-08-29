@@ -29,7 +29,8 @@ class YatConv3D(Conv3d):
             use_alpha=True.        weight_normalized: If True, normalize each kernel filter to have norm 1.
             This optimization avoids recomputing kernel norms in YAT distance
             calculation since they are guaranteed to be 1.0.        tie_kernel_bank: If True, reuse shared kernels across compatible layers.
-        kernel_bank_size: Optional explicit size for shared bank (auto-expands if needed).
+        kernel_bank_size: Optional explicit capacity. The bank auto-expands only
+            during construction, before any tied consumer executes.
         kernel_bank_id: Namespace for shared banks (allows multiple independent banks).
         param_dtype: dtype for parameter initialization (default: None, uses
             PyTorch Conv3d default). Separate from computation dtype.
@@ -37,6 +38,7 @@ class YatConv3D(Conv3d):
     
     # Class-level shared kernel banks
     _KERNEL_BANKS = {}
+    _KERNEL_BANK_USED = {}
 
     def __init__(
         self,
@@ -123,16 +125,29 @@ class YatConv3D(Conv3d):
             if shared_weight is None:
                 # First layer: register the weight as shared
                 YatConv3D._KERNEL_BANKS[bank_key] = self.weight
+                YatConv3D._KERNEL_BANK_USED[bank_key] = False
             else:
                 existing_channels = shared_weight.shape[0]
                 if bank_out_channels > existing_channels:
-                    raise ValueError(
-                        f"kernel bank '{kernel_bank_id}' has immutable capacity "
-                        f"{existing_channels}, requested {bank_out_channels}; create "
-                        "the first consumer with a sufficient kernel_bank_size"
+                    if YatConv3D._KERNEL_BANK_USED.get(bank_key, False):
+                        raise ValueError(
+                            f"kernel bank '{kernel_bank_id}' capacity is frozen "
+                            f"at {existing_channels} after first use; requested "
+                            f"{bank_out_channels}"
+                        )
+                    old_weight = shared_weight.data
+                    new_weight = torch.empty(
+                        (bank_out_channels,) + old_weight.shape[1:],
+                        dtype=old_weight.dtype,
+                        device=old_weight.device,
                     )
+                    nn.init.kaiming_uniform_(new_weight, nonlinearity="relu")
+                    new_weight[:existing_channels].copy_(old_weight)
+                    shared_weight.data = new_weight
                     
                 self.weight = shared_weight
+
+            self._kernel_bank_key = bank_key
 
             if bias and constant_bias is None and not scalar_bias:
                 self.bias = Parameter(
@@ -157,6 +172,7 @@ class YatConv3D(Conv3d):
     def forward(self, input: Tensor, *, deterministic: bool = False) -> Tensor:
         out_channels = self._actual_out_channels
         if self.tie_kernel_bank:
+            YatConv3D._KERNEL_BANK_USED[self._kernel_bank_key] = True
             return yat_conv_forward(
                 self, input, F.conv3d,
                 out_channels=out_channels,

@@ -36,6 +36,24 @@ def test_tied_dense_construction_preserves_live_peer():
     assert first.weight.requires_grad
 
 
+def test_tied_dense_auto_expands_before_first_use_and_preserves_existing_slice():
+    YatNMN._KERNEL_BANKS.clear()
+    first = YatNMN(
+        4, 2, tie_kernel_bank=True, alpha=False, bias=False,
+        kernel_bank_id="issue-71-pre-use-expand",
+    )
+    existing_slice = first.weight.detach().clone()
+
+    second = YatNMN(
+        4, 3, tie_kernel_bank=True, alpha=False, bias=False,
+        kernel_bank_id="issue-71-pre-use-expand",
+    )
+
+    assert first.weight is second.weight
+    assert first.weight.shape == (3, 4)
+    torch.testing.assert_close(first.weight[:2], existing_slice)
+
+
 def test_tied_dense_rejects_expansion_without_mutating_stale_gradient():
     YatNMN._KERNEL_BANKS.clear()
     first = YatNMN(
@@ -47,7 +65,7 @@ def test_tied_dense_rejects_expansion_without_mutating_stale_gradient():
     value_before = parameter.detach().clone()
     gradient_before = parameter.grad.detach().clone()
 
-    with pytest.raises(ValueError, match="immutable capacity"):
+    with pytest.raises(ValueError, match="capacity is frozen"):
         YatNMN(
             4, 3, tie_kernel_bank=True, alpha=False, bias=False,
             kernel_bank_id="issue-71-stale-grad",
@@ -74,7 +92,7 @@ def test_tied_dense_rejects_expansion_without_mutating_adam_state():
         for key, value in optimizer.state[parameter].items()
     }
 
-    with pytest.raises(ValueError, match="immutable capacity"):
+    with pytest.raises(ValueError, match="capacity is frozen"):
         YatNMN(
             4, 3, tie_kernel_bank=True, alpha=False, bias=False,
             kernel_bank_id="issue-71-adam",
@@ -153,6 +171,28 @@ def test_tied_conv_bank_accumulates_gradients_and_uses_actual_bias_width(
     assert not torch.equal(before, narrow.weight)
 
 
+@pytest.mark.parametrize("conv_cls", [YatConv1D, YatConv2D, YatConv3D])
+def test_tied_conv_auto_expands_before_first_use_and_preserves_slice(conv_cls):
+    conv_cls._KERNEL_BANKS.clear()
+    bank_id = f"issue-72-pre-use-expand-{conv_cls.__name__}"
+    first = conv_cls(
+        2, 2, 1, tie_kernel_bank=True, bias=False, use_alpha=False,
+        kernel_bank_id=bank_id,
+    )
+    existing_slice = first.weight.detach().clone()
+
+    second = conv_cls(
+        2, 4, 1, tie_kernel_bank=True, bias=False, use_alpha=False,
+        kernel_bank_id=bank_id,
+    )
+
+    assert first.weight is second.weight
+    assert first.weight.shape[0] == 4
+    torch.testing.assert_close(first.weight[:2], existing_slice)
+    assert first.out_channels == 2
+    assert second.out_channels == 4
+
+
 @pytest.mark.parametrize(
     ("conv_cls", "input_shape"),
     [
@@ -180,7 +220,7 @@ def test_tied_conv_rejects_expansion_without_mutating_adam_state(
         for key, value in optimizer.state[parameter].items()
     }
 
-    with pytest.raises(ValueError, match="immutable capacity"):
+    with pytest.raises(ValueError, match="capacity is frozen"):
         conv_cls(
             2, 4, 1, tie_kernel_bank=True, bias=False, use_alpha=False,
             kernel_bank_id=bank_id,

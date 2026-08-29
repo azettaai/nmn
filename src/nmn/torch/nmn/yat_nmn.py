@@ -53,7 +53,8 @@ class YatNMN(nn.Module):
             (fully backward compatible). Alias: ``freeze_kernel``.
         freeze_kernel (bool): Alias for ``lazy`` (logical OR with ``lazy``).
         tie_kernel_bank (bool): If True, reuse shared kernels across compatible layers.
-        kernel_bank_size (int): Optional explicit size for shared bank (auto-expands if needed).
+        kernel_bank_size (int): Optional explicit size for the shared bank. Banks
+            auto-expand only during construction, before any consumer executes.
         kernel_bank_id (str): Namespace for shared banks (allows multiple independent banks).
         kernel_init (callable): Initializer for the weight matrix
         bias_init (callable): Initializer for the bias
@@ -64,6 +65,7 @@ class YatNMN(nn.Module):
     DEFAULT_CONSTANT_ALPHA = math.sqrt(2.0)
     # Class-level shared kernel banks (guarded by a lock for thread safety)
     _KERNEL_BANKS = {}
+    _KERNEL_BANK_USED = {}
     _KERNEL_BANKS_LOCK = threading.Lock()
 
     def __init__(
@@ -146,6 +148,7 @@ class YatNMN(nn.Module):
                         dtype=param_dtype
                     ))
                     YatNMN._KERNEL_BANKS[bank_key] = self.weight
+                    YatNMN._KERNEL_BANK_USED[bank_key] = False
                 else:
                     if shared_weight.requires_grad != (not self.lazy):
                         raise ValueError(
@@ -155,12 +158,26 @@ class YatNMN(nn.Module):
                     initialize_kernel = False
                     existing_size = shared_weight.shape[0]
                     if bank_out_features > existing_size:
-                        raise ValueError(
-                            f"kernel bank '{kernel_bank_id}' has immutable capacity "
-                            f"{existing_size}, requested {bank_out_features}; create "
-                            "the first consumer with a sufficient kernel_bank_size"
+                        if YatNMN._KERNEL_BANK_USED.get(bank_key, False):
+                            raise ValueError(
+                                f"kernel bank '{kernel_bank_id}' capacity is frozen "
+                                f"at {existing_size} after first use; requested "
+                                f"{bank_out_features}"
+                            )
+                        old_weight = shared_weight.data
+                        new_weight = torch.empty(
+                            (bank_out_features, in_features),
+                            dtype=param_dtype,
+                            device=old_weight.device,
                         )
+                        kernel_init(new_weight)
+                        if positive_init:
+                            new_weight.abs_()
+                        new_weight[:existing_size].copy_(old_weight)
+                        shared_weight.data = new_weight
                     self.weight = shared_weight
+
+            self._kernel_bank_key = bank_key
 
             self._kernel_slice = slice(0, out_features)
         else:
@@ -311,6 +328,8 @@ class YatNMN(nn.Module):
         kernel = self.weight
         # Slice shared kernel if tying is enabled
         if self.tie_kernel_bank:
+            with YatNMN._KERNEL_BANKS_LOCK:
+                YatNMN._KERNEL_BANK_USED[self._kernel_bank_key] = True
             kernel = kernel[self._kernel_slice]
 
         # Resolve bias (learnable or constant)
