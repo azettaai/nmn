@@ -132,7 +132,7 @@ class YatConv2D(Conv2d):
         if tie_kernel_bank:
             bank_key = (
                 kernel_bank_id, in_channels, tuple(self.kernel_size), groups,
-                storage_dtype, self.weight.device,
+                self.weight.dtype, self.weight.device,
             )
             with YatConv2D._KERNEL_BANKS_LOCK:
                 shared_weight = YatConv2D._KERNEL_BANKS.get(bank_key)
@@ -142,6 +142,9 @@ class YatConv2D(Conv2d):
                     YatConv2D._KERNEL_BANKS[bank_key] = self.weight
                     YatConv2D._KERNEL_BANK_USED[bank_key] = False
                 else:
+                    if (shared_weight.device != self.weight.device
+                            or shared_weight.dtype != self.weight.dtype):
+                        raise RuntimeError("shared kernel bank device/dtype registry is stale")
                     existing_channels = shared_weight.shape[0]
                     if bank_out_channels > existing_channels:
                         if YatConv2D._KERNEL_BANK_USED.get(bank_key, False):
@@ -200,3 +203,11 @@ class YatConv2D(Conv2d):
             out_channels=out_channels,
             deterministic=deterministic,
         )
+
+    def _apply(self, fn, recurse=True):
+        if getattr(self, "tie_kernel_bank", False):
+            raise RuntimeError(
+                "device/dtype migration is unsupported for tied kernel-bank "
+                "consumers; construct them with the target device and dtype"
+            )
+        return super()._apply(fn, recurse=recurse)

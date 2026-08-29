@@ -1,6 +1,7 @@
 """Regression tests for PyTorch dtype and shared-bank issue tranches."""
 
 import copy
+import threading
 
 import pytest
 import torch
@@ -250,6 +251,132 @@ def test_tied_conv_bank_is_device_scoped_and_preserves_public_width(conv_cls):
     assert meta_layer.weight.device.type == "meta"
     assert cpu_layer.weight is not meta_layer.weight
     assert cpu_layer.out_channels == meta_layer.out_channels == 2
+
+
+@pytest.mark.parametrize("conv_cls", [YatConv1D, YatConv3D])
+def test_tied_conv_concurrent_construction_is_atomic(conv_cls):
+    conv_cls._KERNEL_BANKS.clear()
+    bank_id = f"issue-72-construction-race-{conv_cls.__name__}"
+    barrier = threading.Barrier(3)
+    layers = []
+    errors = []
+
+    def construct(width):
+        barrier.wait()
+        try:
+            layers.append(conv_cls(
+                2, width, 1, tie_kernel_bank=True, bias=False,
+                use_alpha=False, kernel_bank_id=bank_id,
+            ))
+        except Exception as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    threads = [
+        threading.Thread(target=construct, args=(2,)),
+        threading.Thread(target=construct, args=(4,)),
+    ]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(layers) == 2
+    assert layers[0].weight is layers[1].weight
+    assert layers[0].weight.shape[0] == 4
+
+
+@pytest.mark.parametrize(
+    ("conv_cls", "input_shape"),
+    [(YatConv1D, (1, 2, 3)), (YatConv3D, (1, 2, 2, 2, 2))],
+)
+def test_tied_conv_first_use_and_expansion_race_is_serialized(
+    conv_cls, input_shape
+):
+    conv_cls._KERNEL_BANKS.clear()
+    bank_id = f"issue-72-use-race-{conv_cls.__name__}"
+    first = conv_cls(
+        2, 2, 1, tie_kernel_bank=True, bias=False, use_alpha=False,
+        kernel_bank_id=bank_id,
+    )
+    parameter = first.weight
+    barrier = threading.Barrier(3)
+    outputs = []
+    expanded = []
+    errors = []
+
+    def execute():
+        barrier.wait()
+        outputs.append(first(torch.randn(*input_shape)))
+
+    def expand():
+        barrier.wait()
+        try:
+            expanded.append(conv_cls(
+                2, 4, 1, tie_kernel_bank=True, bias=False,
+                use_alpha=False, kernel_bank_id=bank_id,
+            ))
+        except ValueError as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=execute), threading.Thread(target=expand)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(outputs) == 1 and torch.isfinite(outputs[0]).all()
+    assert first.weight is parameter
+    assert len(expanded) + len(errors) == 1
+    if expanded:
+        assert expanded[0].weight is parameter
+        assert parameter.shape[0] == 4
+    else:
+        assert "capacity is frozen" in str(errors[0])
+        assert parameter.shape[0] == 2
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda tied: YatNMN(4, 2, tie_kernel_bank=tied),
+        lambda tied: YatConv1D(2, 2, 1, tie_kernel_bank=tied),
+        lambda tied: YatConv2D(2, 2, 1, tie_kernel_bank=tied),
+        lambda tied: YatConv3D(2, 2, 1, tie_kernel_bank=tied),
+    ],
+)
+def test_tied_bank_rejects_apply_migration_but_untied_module_migrates(factory):
+    tied = factory(True)
+    parameter = tied.weight
+    with pytest.raises(RuntimeError, match="migration is unsupported"):
+        tied.double()
+    with pytest.raises(RuntimeError, match="migration is unsupported"):
+        tied.to("meta")
+    assert tied.weight is parameter
+    assert tied.weight.device.type == "cpu"
+    assert tied.weight.dtype == torch.float32
+
+    untied = factory(False).double()
+    assert untied.weight.dtype == torch.float64
+
+
+def test_tied_conv_attachment_rejects_stale_registry_dtype():
+    YatConv1D._KERNEL_BANKS.clear()
+    first = YatConv1D(
+        2, 2, 1, tie_kernel_bank=True,
+        kernel_bank_id="issue-72-stale-registry",
+    )
+    first.weight.data = first.weight.data.double()
+
+    with pytest.raises(RuntimeError, match="registry is stale"):
+        YatConv1D(
+            2, 2, 1, tie_kernel_bank=True,
+            kernel_bank_id="issue-72-stale-registry",
+        )
 
 
 def test_attention_compute_and_parameter_dtypes_round_trip():

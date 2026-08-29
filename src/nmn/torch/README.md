@@ -230,6 +230,12 @@ Build every tied consumer before running any of them, or set
 `kernel_bank_size` on the first consumer to the maximum required capacity.
 Requesting a larger capacity after the first forward raises `ValueError`.
 
+Because PyTorch applies `.to()`, `.float()`, `.double()`, and similar operations
+one module at a time, they cannot safely migrate a class-level shared bank.
+Tied consumers therefore reject post-construction device/dtype migration with
+`RuntimeError`; construct every tied layer with its target `device`, `dtype`, or
+`param_dtype`. Non-tied layers retain normal migration behavior.
+
 **Output:**
 ```
 Auto-expanding kernel bank 'resnet-conv': 32 -> 64 filters

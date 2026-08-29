@@ -137,7 +137,11 @@ class YatNMN(nn.Module):
                     f"kernel_bank_size ({bank_out_features}) must be at least "
                     f"out_features ({out_features})"
                 )
-            bank_key = (kernel_bank_id, in_features, param_dtype, id(kernel_init), positive_init)
+            bank_device = torch.empty((), dtype=param_dtype).device
+            bank_key = (
+                kernel_bank_id, in_features, param_dtype, bank_device,
+                id(kernel_init), positive_init,
+            )
 
             with YatNMN._KERNEL_BANKS_LOCK:
                 shared_weight = YatNMN._KERNEL_BANKS.get(bank_key)
@@ -150,6 +154,9 @@ class YatNMN(nn.Module):
                     YatNMN._KERNEL_BANKS[bank_key] = self.weight
                     YatNMN._KERNEL_BANK_USED[bank_key] = False
                 else:
+                    if (shared_weight.device != bank_device
+                            or shared_weight.dtype != param_dtype):
+                        raise RuntimeError("shared kernel bank device/dtype registry is stale")
                     if shared_weight.requires_grad != (not self.lazy):
                         raise ValueError(
                             "tied YatNMN consumers must use the same lazy/freeze_kernel "
@@ -404,6 +411,14 @@ class YatNMN(nn.Module):
             y = y * alpha_param
 
         return y
+
+    def _apply(self, fn, recurse=True):
+        if getattr(self, "tie_kernel_bank", False):
+            raise RuntimeError(
+                "device/dtype migration is unsupported for tied kernel-bank "
+                "consumers; construct them with the target device and dtype"
+            )
+        return super()._apply(fn, recurse=recurse)
 
     def extra_repr(self) -> str:
         """

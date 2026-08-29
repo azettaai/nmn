@@ -1,5 +1,6 @@
 # mypy: allow-untyped-defs
 import math
+import threading
 from typing import Optional, Union
 
 import torch
@@ -41,6 +42,7 @@ class YatConv1D(Conv1d):
     # Class-level shared kernel banks
     _KERNEL_BANKS = {}
     _KERNEL_BANK_USED = {}
+    _KERNEL_BANKS_LOCK = threading.Lock()
 
     def __init__(
         self,
@@ -121,36 +123,36 @@ class YatConv1D(Conv1d):
         if tie_kernel_bank:
             bank_key = (
                 kernel_bank_id, in_channels, tuple(self.kernel_size), groups,
-                storage_dtype, self.weight.device,
+                self.weight.dtype, self.weight.device,
             )
-            shared_weight = YatConv1D._KERNEL_BANKS.get(bank_key)
-
-            if shared_weight is None:
-                # First layer: register the weight as shared
-                YatConv1D._KERNEL_BANKS[bank_key] = self.weight
-                YatConv1D._KERNEL_BANK_USED[bank_key] = False
-            else:
-                existing_channels = shared_weight.shape[0]
-                if bank_out_channels > existing_channels:
-                    if YatConv1D._KERNEL_BANK_USED.get(bank_key, False):
-                        raise ValueError(
-                            f"kernel bank '{kernel_bank_id}' capacity is frozen "
-                            f"at {existing_channels} after first use; requested "
-                            f"{bank_out_channels}"
+            with YatConv1D._KERNEL_BANKS_LOCK:
+                shared_weight = YatConv1D._KERNEL_BANKS.get(bank_key)
+                if shared_weight is None:
+                    YatConv1D._KERNEL_BANKS[bank_key] = self.weight
+                    YatConv1D._KERNEL_BANK_USED[bank_key] = False
+                else:
+                    if (shared_weight.device != self.weight.device
+                            or shared_weight.dtype != self.weight.dtype):
+                        raise RuntimeError("shared kernel bank device/dtype registry is stale")
+                    existing_channels = shared_weight.shape[0]
+                    if bank_out_channels > existing_channels:
+                        if YatConv1D._KERNEL_BANK_USED.get(bank_key, False):
+                            raise ValueError(
+                                f"kernel bank '{kernel_bank_id}' capacity is frozen "
+                                f"at {existing_channels} after first use; requested "
+                                f"{bank_out_channels}"
+                            )
+                        old_weight = shared_weight.data
+                        new_weight = torch.empty(
+                            (bank_out_channels,) + old_weight.shape[1:],
+                            dtype=old_weight.dtype,
+                            device=old_weight.device,
                         )
-                    old_weight = shared_weight.data
-                    new_weight = torch.empty(
-                        (bank_out_channels,) + old_weight.shape[1:],
-                        dtype=old_weight.dtype,
-                        device=old_weight.device,
-                    )
-                    nn.init.kaiming_uniform_(new_weight, nonlinearity="relu")
-                    new_weight[:existing_channels].copy_(old_weight)
-                    shared_weight.data = new_weight
-                    
-                self.weight = shared_weight
-
-            self._kernel_bank_key = bank_key
+                        nn.init.kaiming_uniform_(new_weight, nonlinearity="relu")
+                        new_weight[:existing_channels].copy_(old_weight)
+                        shared_weight.data = new_weight
+                    self.weight = shared_weight
+                self._kernel_bank_key = bank_key
 
             if bias and constant_bias is None and not scalar_bias:
                 self.bias = Parameter(
@@ -175,7 +177,8 @@ class YatConv1D(Conv1d):
     def forward(self, input: Tensor, *, deterministic: bool = False) -> Tensor:
         out_channels = self._actual_out_channels
         if self.tie_kernel_bank:
-            YatConv1D._KERNEL_BANK_USED[self._kernel_bank_key] = True
+            with YatConv1D._KERNEL_BANKS_LOCK:
+                YatConv1D._KERNEL_BANK_USED[self._kernel_bank_key] = True
             return yat_conv_forward(
                 self, input, F.conv1d,
                 out_channels=out_channels,
@@ -187,3 +190,11 @@ class YatConv1D(Conv1d):
             out_channels=out_channels,
             deterministic=deterministic,
         )
+
+    def _apply(self, fn, recurse=True):
+        if getattr(self, "tie_kernel_bank", False):
+            raise RuntimeError(
+                "device/dtype migration is unsupported for tied kernel-bank "
+                "consumers; construct them with the target device and dtype"
+            )
+        return super()._apply(fn, recurse=recurse)
