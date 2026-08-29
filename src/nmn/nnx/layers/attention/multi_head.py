@@ -36,11 +36,53 @@ from flax.typing import (
 )
 from jax import Array
 
-from .yat_attention import normalize_qk as l2_normalize_qk, yat_attention
+from .yat_attention import yat_attention
 from .masks import combine_masks
 
 # Default constant alpha value (sqrt(2)), same as NMN
 DEFAULT_CONSTANT_ALPHA = jnp.sqrt(2.0)
+_L2_NORMALIZE_EPSILON = 1e-12
+
+
+def _l2_normalize_per_head(x: Array) -> Array:
+    """Match ``torch.nn.functional.normalize(..., p=2, eps=1e-12)``."""
+    norm = jnp.linalg.norm(x, axis=-1, keepdims=True)
+    epsilon = jnp.asarray(_L2_NORMALIZE_EPSILON, dtype=norm.dtype)
+    return x / jnp.maximum(norm, epsilon)
+
+
+def _raise_cache_overflow(index: Array, max_length: int) -> None:
+    if int(index) >= max_length:
+        raise ValueError(f"Autoregressive cache is full at length {max_length}.")
+
+
+def _check_cache_capacity(index: Array, max_length: int) -> None:
+    """Fail before a cache write in eager mode and under ``nnx.jit``."""
+    if isinstance(index, jax.core.Tracer):
+        jax.debug.callback(
+            functools.partial(_raise_cache_overflow, max_length=max_length),
+            index,
+            ordered=True,
+        )
+    else:
+        _raise_cache_overflow(index, max_length)
+
+
+def _validate_decode_mask(mask: Array | None, expected_shape: tuple[int, ...]) -> None:
+    if mask is None:
+        return
+    try:
+        broadcast_shape = jnp.broadcast_shapes(tuple(mask.shape), expected_shape)
+    except ValueError as exc:
+        raise ValueError(
+            f"Decode mask shape {mask.shape} is not broadcastable to "
+            f"{expected_shape}."
+        ) from exc
+    if broadcast_shape != expected_shape:
+        raise ValueError(
+            f"Decode mask shape {mask.shape} would expand attention shape "
+            f"{expected_shape} to {broadcast_shape}."
+        )
 
 
 class MultiHeadAttention(Module):
@@ -379,7 +421,8 @@ class MultiHeadAttention(Module):
 
         # Optional QK normalization (stabilizes training with higher LR)
         if self.normalize_qk:
-            query, key = l2_normalize_qk(query, key, self.epsilon)
+            query = _l2_normalize_per_head(query)
+            key = _l2_normalize_per_head(key)
 
         # Handle autoregressive decoding
         decode = first_from(
@@ -407,40 +450,46 @@ class MultiHeadAttention(Module):
                 depth_per_head,
             ) = self.cached_key[...].shape
 
-            # Validate the key/value slice that is written to the cache.  Query
-            # feature dimensions need not govern a cross-attention cache.
             expected_shape = tuple(batch_dims) + (1, num_heads, depth_per_head)
-            if expected_shape != key.shape:
-                raise ValueError(
-                    f"Autoregressive cache shape error, "
-                    f"expected key shape {expected_shape} instead got {key.shape}."
-                )
-
-            # Update cache
-            cur_index = self.cache_index[...]
-            if (
-                not isinstance(cur_index, jax.core.Tracer)
-                and int(cur_index) >= max_length
+            for name, tensor in (
+                ("query", query),
+                ("key", key),
+                ("value", value),
             ):
-                raise ValueError(
-                    f"Autoregressive cache is full at length {max_length}."
-                )
+                if expected_shape != tensor.shape:
+                    raise ValueError(
+                        f"Autoregressive cache shape error, expected {name} shape "
+                        f"{expected_shape} instead got {tensor.shape}."
+                    )
+
+            decode_mask_shape = tuple(batch_dims) + (
+                self.num_heads,
+                1,
+                max_length,
+            )
+            _validate_decode_mask(mask, decode_mask_shape)
+
+            # Build the next cache state locally.  It is committed only after
+            # attention and output projection complete successfully.
+            cur_index = self.cache_index[...]
+            _check_cache_capacity(cur_index, max_length)
             zero = jnp.array(0, dtype=lax.dtype(cur_index.dtype))
             indices = (zero,) * len(batch_dims) + (cur_index, zero, zero)
-            key = lax.dynamic_update_slice(self.cached_key[...], key, indices)
-            value = lax.dynamic_update_slice(self.cached_value[...], value, indices)
-            self.cached_key[...] = key
-            self.cached_value[...] = value
-            self.cache_index[...] += 1
-
-            # Causal mask for cached decoding
-            mask = combine_masks(
-                mask,
-                jnp.broadcast_to(
-                    jnp.arange(max_length) <= cur_index,
-                    tuple(batch_dims) + (1, 1, max_length),
-                ),
+            next_key = lax.dynamic_update_slice(self.cached_key[...], key, indices)
+            next_value = lax.dynamic_update_slice(
+                self.cached_value[...], value, indices
             )
+            key = next_key
+            value = next_value
+
+            causal_mask = jnp.broadcast_to(
+                jnp.arange(max_length) <= cur_index,
+                tuple(batch_dims) + (1, 1, max_length),
+            )
+            mask = combine_masks(mask, causal_mask)
+            pending_cache = (next_key, next_value, cur_index + 1)
+        else:
+            pending_cache = None
 
         # Get dropout RNG if needed
         dropout_rng = None
@@ -489,7 +538,18 @@ class MultiHeadAttention(Module):
         if self._constant_alpha_value is not None:
             x = x * self._constant_alpha_value
 
-        return self.out(x)
+        output = self.out(x)
+
+        if pending_cache is not None:
+            assert self.cached_key is not None
+            assert self.cached_value is not None
+            assert self.cache_index is not None
+            next_key, next_value, next_index = pending_cache
+            self.cached_key[...] = next_key
+            self.cached_value[...] = next_value
+            self.cache_index[...] = next_index
+
+        return output
 
     def init_cache(self, input_shape: Shape, dtype: Dtype = jnp.float32):
         """Initializes the cache for autoregressive decoding.

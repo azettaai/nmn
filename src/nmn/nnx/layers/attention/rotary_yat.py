@@ -57,6 +57,7 @@ from .spherical_yat_performer import (
     create_yat_tp_projection,
 )
 from .maclaurin_yat import (
+    _validate_linear_attention_mask,
     create_maclaurin_projection,
     maclaurin_yat_attention,
 )
@@ -64,7 +65,11 @@ from .radial_yat import (
     create_radial_projection,
     radial_yat_attention,
 )
-from .multi_head import DEFAULT_CONSTANT_ALPHA
+from .multi_head import (
+    DEFAULT_CONSTANT_ALPHA,
+    _check_cache_capacity,
+    _validate_decode_mask,
+)
 from .masks import combine_masks
 from nmn.nnx.layers.squashers import softermax
 
@@ -741,6 +746,11 @@ class RotaryYatAttention(Module):
                 "Incremental decode is not supported in Performer mode; "
                 "use quadratic attention for cached decoding."
             )
+        if self.use_performer:
+            _validate_linear_attention_mask(
+                mask,
+                (batch_size, self.num_heads, 1, seq_len),
+            )
 
         # Project to Q, K, V
         q = self.q_proj(x)
@@ -769,7 +779,6 @@ class RotaryYatAttention(Module):
                     "Cache not initialized. Call init_cache first."
                 )
 
-            cur_index = self.cache_index[...]
             if seq_len != 1:
                 raise ValueError(
                     f"Autoregressive decode expects one token, got seq_len={seq_len}."
@@ -777,20 +786,23 @@ class RotaryYatAttention(Module):
             expected_shape = (
                 self.cached_key.shape[0], 1, self.num_heads, self.head_dim
             )
-            if k.shape != expected_shape:
-                raise ValueError(
-                    f"Autoregressive cache shape error, expected key shape "
-                    f"{expected_shape} instead got {k.shape}."
-                )
-            if (
-                not isinstance(cur_index, jax.core.Tracer)
-                and int(cur_index) >= self.cached_key.shape[1]
-            ):
-                raise ValueError(
-                    f"Autoregressive cache is full at length "
-                    f"{self.cached_key.shape[1]}."
-                )
-            # Update cache
+            for name, tensor in (("query", q), ("key", k), ("value", v)):
+                if tensor.shape != expected_shape:
+                    raise ValueError(
+                        f"Autoregressive cache shape error, expected {name} "
+                        f"shape {expected_shape} instead got {tensor.shape}."
+                    )
+
+            max_length = self.cached_key.shape[1]
+            _validate_decode_mask(
+                mask,
+                (batch_size, self.num_heads, 1, max_length),
+            )
+
+            # Build the next cache state locally and commit it only after the
+            # complete attention/output computation succeeds.
+            cur_index = self.cache_index[...]
+            _check_cache_capacity(cur_index, max_length)
             indices = (0, cur_index, 0, 0)
             k_cached = jax.lax.dynamic_update_slice(
                 self.cached_key[...], k, indices
@@ -798,15 +810,10 @@ class RotaryYatAttention(Module):
             v_cached = jax.lax.dynamic_update_slice(
                 self.cached_value[...], v, indices
             )
-            self.cached_key[...] = k_cached
-            self.cached_value[...] = v_cached
-            self.cache_index[...] += 1
-
             k = k_cached
             v = v_cached
 
             # Causal mask for decoding
-            max_length = k.shape[1]
             mask = combine_masks(
                 mask,
                 jnp.broadcast_to(
@@ -818,8 +825,10 @@ class RotaryYatAttention(Module):
             # complete cached key sequence occupies positions starting at zero.
             position_offset = cur_index
             key_position_offset = 0
+            pending_cache = (k_cached, v_cached, cur_index + 1)
         else:
             key_position_offset = position_offset
+            pending_cache = None
 
         # Get RoPE frequencies
         freqs_cos = jax.device_put(self.freqs_cos[...])
@@ -956,6 +965,15 @@ class RotaryYatAttention(Module):
         # Optional output projection
         if self.o_proj is not None:
             output = self.o_proj(output)
+
+        if pending_cache is not None:
+            assert self.cached_key is not None
+            assert self.cached_value is not None
+            assert self.cache_index is not None
+            next_key, next_value, next_index = pending_cache
+            self.cached_key[...] = next_key
+            self.cached_value[...] = next_value
+            self.cache_index[...] = next_index
 
         return output
 

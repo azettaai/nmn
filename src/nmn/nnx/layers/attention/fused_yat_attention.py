@@ -85,6 +85,15 @@ def fused_yat_l1_attention(
 
 # ── Helpers to compute YAT scores from Q, K ────────────────────────────
 
+def _unbroadcast_to(gradient: Array, target: Array) -> Array:
+  """Sum a broadcasted gradient back to ``target.shape`` exactly."""
+  while gradient.ndim > target.ndim:
+    gradient = jnp.sum(gradient, axis=0)
+  for axis, size in enumerate(target.shape):
+    if size == 1 and gradient.shape[axis] != 1:
+      gradient = jnp.sum(gradient, axis=axis, keepdims=True)
+  return gradient.reshape(target.shape).astype(target.dtype)
+
 def _yat_scores(q_f32, k_f32, bias, epsilon, mask, has_bias, has_mask, scale):
   """Compute raw YAT scores and the L1 normalizer.
 
@@ -234,22 +243,15 @@ def _fused_yat_l1_attn_bwd(has_bias, has_mask, has_eps_grad, scale, precision,
 
   # ── dBias: d(scores)/d(bias) = 2*num / (dist*scale) ──────────────
   if has_bias:
-    g_bias = jnp.sum(dS * 2 * num * inv_dist_scale,
-                     axis=tuple(range(batch_dims)))
-    # Reduce to match bias.shape via broadcasting rules
-    while g_bias.ndim > bias.ndim:
-      g_bias = jnp.sum(g_bias, axis=0)
-    for i in range(bias.ndim):
-      if bias.shape[i] == 1 and g_bias.shape[i] != 1:
-        g_bias = jnp.sum(g_bias, axis=i, keepdims=True)
-    g_bias = g_bias.astype(bias.dtype)
+    g_bias = _unbroadcast_to(dS * 2 * num * inv_dist_scale, bias)
   else:
     g_bias = jnp.zeros_like(bias)
 
   # ── dEpsilon: d(scores)/d(eps) = -num² / (dist² * scale) ─────────
   if has_eps_grad:
-    g_eps = jnp.sum(dS * (-(num ** 2) * inv_dist_scale_sq))
-    g_eps = g_eps.reshape(epsilon.shape).astype(epsilon.dtype)
+    g_eps = _unbroadcast_to(
+        dS * (-(num ** 2) * inv_dist_scale_sq), epsilon
+    )
   else:
     g_eps = jnp.zeros_like(epsilon)
 
@@ -483,21 +485,15 @@ def _fused_yat_l1_self_attn_bwd(has_bias, has_eps_grad, scale, precision, res, g
 
   # dBias
   if has_bias:
-    g_bias = jnp.sum(dS * 2 * num * inv_dist_scale,
-                     axis=tuple(range(batch_dims)))
-    while g_bias.ndim > bias.ndim:
-      g_bias = jnp.sum(g_bias, axis=0)
-    for i in range(bias.ndim):
-      if bias.shape[i] == 1 and g_bias.shape[i] != 1:
-        g_bias = jnp.sum(g_bias, axis=i, keepdims=True)
-    g_bias = g_bias.astype(bias.dtype)
+    g_bias = _unbroadcast_to(dS * 2 * num * inv_dist_scale, bias)
   else:
     g_bias = jnp.zeros_like(bias)
 
   # dEpsilon
   if has_eps_grad:
-    g_eps = jnp.sum(dS * (-(num ** 2) * inv_dist_scale_sq))
-    g_eps = g_eps.reshape(epsilon.shape).astype(epsilon.dtype)
+    g_eps = _unbroadcast_to(
+        dS * (-(num ** 2) * inv_dist_scale_sq), epsilon
+    )
   else:
     g_eps = jnp.zeros_like(epsilon)
 

@@ -211,6 +211,32 @@ def maclaurin_features(
     return scale * feat
 
 
+def _validate_linear_attention_mask(
+    mask: Array | None,
+    expected_shape: tuple[int, ...],
+) -> None:
+    """Validate a factorable key-padding mask without evaluating its values."""
+    if mask is None:
+        return
+    if mask.ndim < 3 or mask.shape[-2] != 1:
+        raise ValueError(
+            "Linear YAT attention only supports key-padding masks with "
+            "shape [..., heads, 1, kv_length]; use causal=True for causal masks."
+        )
+    try:
+        broadcast_shape = jnp.broadcast_shapes(tuple(mask.shape), expected_shape)
+    except ValueError as exc:
+        raise ValueError(
+            f"Mask shape {mask.shape} is not broadcastable to "
+            f"{expected_shape}."
+        ) from exc
+    if broadcast_shape != expected_shape:
+        raise ValueError(
+            f"Mask shape {mask.shape} would expand linear attention shape "
+            f"{expected_shape} to {broadcast_shape}."
+        )
+
+
 def _linear_readout(
     q_feat: Array,
     k_feat: Array,
@@ -234,25 +260,15 @@ def _linear_readout(
     """
     if mask is not None:
         mask = jnp.asarray(mask, dtype=jnp.bool_)
-        if mask.ndim < 3 or mask.shape[-2] != 1:
-            raise ValueError(
-                "Linear YAT attention only supports key-padding masks with "
-                "shape [..., heads, 1, kv_length]; use causal=True for causal masks."
-            )
-        if mask.shape[-1] not in (1, k_feat.shape[-3]):
-            raise ValueError(
-                f"Mask key length {mask.shape[-1]} is incompatible with "
-                f"kv_length {k_feat.shape[-3]}."
-            )
+        expected_mask_shape = k_feat.shape[:-3] + (
+            k_feat.shape[-2],
+            1,
+            k_feat.shape[-3],
+        )
+        _validate_linear_attention_mask(mask, expected_mask_shape)
         # [..., H, 1, K] -> [..., K, H, 1], broadcast over feature dim.
         key_mask = jnp.swapaxes(jnp.squeeze(mask, axis=-2), -1, -2)[..., None]
-        try:
-            key_mask = jnp.broadcast_to(key_mask, k_feat.shape[:-1] + (1,))
-        except ValueError as exc:
-            raise ValueError(
-                f"Mask shape {mask.shape} is not broadcastable to key shape "
-                f"{k_feat.shape}."
-            ) from exc
+        key_mask = jnp.broadcast_to(key_mask, k_feat.shape[:-1] + (1,))
         k_feat = jnp.where(key_mask, k_feat, 0.0)
 
     if causal:
