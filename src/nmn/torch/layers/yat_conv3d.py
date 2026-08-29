@@ -9,8 +9,6 @@ from torch import Tensor
 from torch.nn import functional as F
 from torch.nn.common_types import _size_3_t
 from torch.nn.parameter import Parameter
-from torch.nn.modules.utils import _triple
-
 from torch.nn import Conv3d
 
 from ._yat_conv_core import setup_yat_attrs, yat_conv_forward
@@ -82,7 +80,7 @@ class YatConv3D(Conv3d):
 
         # If constant_bias or scalar_bias is set, don't allocate a per-channel
         # learnable bias in the parent — we handle bias ourselves.
-        parent_bias = False if (constant_bias is not None or scalar_bias) else bias
+        parent_bias = not (tie_kernel_bank or constant_bias is not None or scalar_bias) and bias
 
         super().__init__(
             in_channels,
@@ -141,6 +139,14 @@ class YatConv3D(Conv3d):
                     
                 self.weight = shared_weight
 
+            if bias and constant_bias is None and not scalar_bias:
+                self.bias = Parameter(
+                    torch.empty(out_channels, device=device, dtype=storage_dtype)
+                )
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+                nn.init.uniform_(self.bias, -bound, bound)
+
         setup_yat_attrs(
             self,
             bias=bias, constant_bias=constant_bias,
@@ -154,16 +160,12 @@ class YatConv3D(Conv3d):
     def forward(self, input: Tensor, *, deterministic: bool = False) -> Tensor:
         out_channels = self._actual_out_channels
         if self.tie_kernel_bank:
-            original_weight = self.weight
-            self.weight = nn.Parameter(original_weight[self._kernel_slice])
-            try:
-                return yat_conv_forward(
-                    self, input, F.conv3d,
-                    out_channels=out_channels,
-                    deterministic=deterministic,
-                )
-            finally:
-                self.weight = original_weight
+            return yat_conv_forward(
+                self, input, F.conv3d,
+                out_channels=out_channels,
+                deterministic=deterministic,
+                weight_override=self.weight[self._kernel_slice],
+            )
         return yat_conv_forward(
             self, input, F.conv3d,
             out_channels=out_channels,

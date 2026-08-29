@@ -5,12 +5,11 @@ import math
 import threading
 from typing import Optional, Union
 
-logger = logging.getLogger(__name__)
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+logger = logging.getLogger(__name__)
 
 __all__ = ["YatNMN"]
 
@@ -124,6 +123,7 @@ class YatNMN(nn.Module):
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id
         self._kernel_slice = slice(None)
+        initialize_kernel = True
 
         # Weight initialization
         if kernel_init is None:
@@ -145,6 +145,12 @@ class YatNMN(nn.Module):
                     ))
                     YatNMN._KERNEL_BANKS[bank_key] = self.weight
                 else:
+                    if shared_weight.requires_grad != (not self.lazy):
+                        raise ValueError(
+                            "tied YatNMN consumers must use the same lazy/freeze_kernel "
+                            "setting because they share one Parameter"
+                        )
+                    initialize_kernel = False
                     # Bank exists: auto-expand if needed
                     existing_size = shared_weight.shape[0]
                     if bank_out_features > existing_size:
@@ -221,10 +227,13 @@ class YatNMN(nn.Module):
         self.scalar_bias = scalar_bias and self.bias is not None
 
         # Initialize parameters
-        self.reset_parameters(kernel_init, bias_init, alpha_init)
+        self.reset_parameters(
+            kernel_init, bias_init, alpha_init,
+            initialize_kernel=initialize_kernel,
+        )
 
         # Normalize kernel if requested: normalize each neuron (column) to have norm 1
-        if self.weight_normalized:
+        if self.weight_normalized and initialize_kernel:
             weight_norm = torch.sqrt(torch.sum(self.weight**2, dim=-1, keepdim=True))
             self.weight.data = self.weight.data / (weight_norm + 1e-8)
 
@@ -238,7 +247,9 @@ class YatNMN(nn.Module):
         self,
         kernel_init: callable = None,
         bias_init: callable = None,
-        alpha_init: callable = None
+        alpha_init: callable = None,
+        *,
+        initialize_kernel: bool = True,
     ):
         """
         Initialize network parameters with specified or default initializers.
@@ -246,8 +257,9 @@ class YatNMN(nn.Module):
         # Kernel (weight) initialization
         if kernel_init is None:
             kernel_init = nn.init.xavier_normal_
-        kernel_init(self.weight)
-        if self.positive_init:
+        if initialize_kernel:
+            kernel_init(self.weight)
+        if initialize_kernel and self.positive_init:
             with torch.no_grad():
                 self.weight.abs_()
 
