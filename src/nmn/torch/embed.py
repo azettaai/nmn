@@ -14,6 +14,8 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn.parameter import Parameter
 
+from ._precision import saturating_upcast
+
 __all__ = ["YatEmbed"]
 
 DEFAULT_CONSTANT_ALPHA = math.sqrt(2.0)
@@ -125,8 +127,8 @@ class YatEmbed(nn.Module):
         output_dtype = query.dtype
         embedding = self.embedding
         if output_dtype in (torch.float16, torch.bfloat16):
-            query = query.float()
-            embedding = embedding.float()
+            query = saturating_upcast(query)
+            embedding = saturating_upcast(embedding)
 
         # Spherical normalization
         if self.spherical:

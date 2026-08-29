@@ -459,14 +459,26 @@ def test_attention_compute_and_parameter_dtypes_round_trip():
 @pytest.mark.parametrize("spherical", [False, True])
 def test_low_precision_conv_and_embedding_exact_match_is_finite(dtype, spherical):
     conv = YatConv1D(
-        1, 1, 3, bias=False, use_alpha=False, epsilon=1e-5, dtype=dtype
+        1,
+        1,
+        3,
+        bias=False,
+        use_alpha=False,
+        epsilon=1e-5,
+        learnable_epsilon=True,
+        dtype=dtype,
     )
+    with torch.no_grad():
+        # The finite score is representable in fp16, but its derivative is
+        # about 75,000 and exercises the saturating fp32->fp16 grad boundary.
+        conv.weight.fill_(0.5)
     conv_input = conv.weight.detach().reshape(1, 1, 3).clone().requires_grad_()
     conv_output = conv(conv_input)
     conv_output.sum().backward()
     assert torch.isfinite(conv_output).all() and (conv_output >= 0).all()
     assert torch.isfinite(conv_input.grad).all()
     assert torch.isfinite(conv.weight.grad).all()
+    assert torch.isfinite(conv.epsilon_param.grad).all()
 
     embed = YatEmbed(
         1, 3, use_alpha=False, epsilon=1e-5, dtype=dtype, spherical=spherical

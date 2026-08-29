@@ -24,6 +24,8 @@ from torch.nn import functional as F
 from torch.nn.modules.utils import _single
 from torch.nn.parameter import Parameter
 
+from .._precision import saturating_upcast
+
 
 __all__ = [
     "DEFAULT_CONSTANT_ALPHA",
@@ -95,6 +97,7 @@ def setup_yat_attrs(
             torch.full(
                 (1,), raw_eps,
                 dtype=storage_dtype if storage_dtype else torch.float32,
+                device=device,
             )
         )
     else:
@@ -157,7 +160,15 @@ def _resolve_alpha(layer, input: Tensor) -> Optional[Tensor]:
 
 def _resolve_eps(layer, dtype: torch.dtype):
     if layer.learnable_epsilon and layer.epsilon_param is not None:
-        return F.softplus(layer.epsilon_param.to(dtype))
+        epsilon_param = layer.epsilon_param
+        if dtype == torch.float32 and epsilon_param.dtype in (
+            torch.float16,
+            torch.bfloat16,
+        ):
+            epsilon_param = saturating_upcast(epsilon_param)
+        else:
+            epsilon_param = epsilon_param.to(dtype)
+        return F.softplus(epsilon_param)
     return layer.epsilon
 
 
@@ -212,7 +223,7 @@ def yat_conv_forward(
         # cancellation-prone in low precision. Accumulate YAT math in fp32,
         # while preserving parameter storage and the public output dtype.
         input, weight, bias_val, alpha = tuple(
-            tensor.float() if tensor is not None else None
+            saturating_upcast(tensor) if tensor is not None else None
             for tensor in (input, weight, bias_val, alpha)
         )
 
@@ -303,7 +314,7 @@ def yat_conv_transpose_forward(
     output_dtype = input.dtype
     if output_dtype in (torch.float16, torch.bfloat16):
         input, weight, bias_val, alpha = tuple(
-            tensor.float() if tensor is not None else None
+            saturating_upcast(tensor) if tensor is not None else None
             for tensor in (input, weight, bias_val, alpha)
         )
 
