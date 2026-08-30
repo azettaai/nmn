@@ -6,31 +6,50 @@ import torch
 from torch import Tensor
 
 
-class _SaturatingUpcast(torch.autograd.Function):
-    """Upcast low-precision values while saturating their returning gradient.
+def _saturate_gradient(grad_output: Tensor, input_dtype: torch.dtype) -> Tensor:
+    limits = torch.finfo(input_dtype)
+    return grad_output.clamp(min=limits.min, max=limits.max).to(input_dtype)
 
-    YAT scores can have a finite fp16 forward value while their derivative is
-    larger than fp16 can represent.  A normal ``Tensor.float()`` sends that
-    derivative back through an fp16 cast as infinity.  This boundary keeps the
-    fp32 computation unchanged and saturates only the gradient written to the
-    low-precision leaf.
-    """
 
-    @staticmethod
-    def forward(ctx, tensor: Tensor) -> Tensor:
-        ctx.input_dtype = tensor.dtype
-        return tensor.float()
+if hasattr(torch.autograd.Function, "setup_context"):
 
-    @staticmethod
-    def backward(ctx, grad_output: Tensor) -> tuple[Tensor]:
-        limits = torch.finfo(ctx.input_dtype)
-        grad = torch.nan_to_num(
-            grad_output,
-            nan=0.0,
-            posinf=limits.max,
-            neginf=limits.min,
-        ).clamp(min=limits.min, max=limits.max)
-        return (grad.to(ctx.input_dtype),)
+    class _SaturatingUpcast(torch.autograd.Function):
+        """Modern autograd boundary with torch.func transform support."""
+
+        generate_vmap_rule = True
+
+        @staticmethod
+        def forward(tensor: Tensor) -> Tensor:
+            return tensor.float()
+
+        @staticmethod
+        def setup_context(ctx, inputs, output) -> None:
+            del output
+            (tensor,) = inputs
+            ctx.input_dtype = tensor.dtype
+
+        @staticmethod
+        def backward(ctx, grad_output: Tensor) -> tuple[Tensor]:
+            return (_saturate_gradient(grad_output, ctx.input_dtype),)
+
+        @staticmethod
+        def jvp(ctx, grad_tensor: Tensor) -> Tensor:
+            del ctx
+            return grad_tensor.float()
+
+else:  # pragma: no cover - compatibility path for torch 1.11-1.x
+
+    class _SaturatingUpcast(torch.autograd.Function):
+        """Legacy autograd boundary for PyTorch versions before torch.func."""
+
+        @staticmethod
+        def forward(ctx, tensor: Tensor) -> Tensor:
+            ctx.input_dtype = tensor.dtype
+            return tensor.float()
+
+        @staticmethod
+        def backward(ctx, grad_output: Tensor) -> tuple[Tensor]:
+            return (_saturate_gradient(grad_output, ctx.input_dtype),)
 
 
 def saturating_upcast(tensor: Tensor) -> Tensor:

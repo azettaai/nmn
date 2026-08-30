@@ -135,7 +135,16 @@ def promote_to_compute_dtype(layer, *tensors: Optional[Tensor]):
                 break
         if target is None:
             target = torch.float32
-    return tuple(t.to(target) if t is not None else None for t in tensors)
+    return tuple(
+        (
+            saturating_upcast(t).to(target)
+            if t is not None
+            and t.dtype in (torch.float16, torch.bfloat16)
+            and target != t.dtype
+            else t.to(target) if t is not None else None
+        )
+        for t in tensors
+    )
 
 
 def _resolve_bias_val(layer, weight: Tensor, out_channels: int) -> Optional[Tensor]:
@@ -161,11 +170,11 @@ def _resolve_alpha(layer, input: Tensor) -> Optional[Tensor]:
 def _resolve_eps(layer, dtype: torch.dtype):
     if layer.learnable_epsilon and layer.epsilon_param is not None:
         epsilon_param = layer.epsilon_param
-        if dtype == torch.float32 and epsilon_param.dtype in (
+        if dtype != epsilon_param.dtype and epsilon_param.dtype in (
             torch.float16,
             torch.bfloat16,
         ):
-            epsilon_param = saturating_upcast(epsilon_param)
+            epsilon_param = saturating_upcast(epsilon_param).to(dtype)
         else:
             epsilon_param = epsilon_param.to(dtype)
         return F.softplus(epsilon_param)
