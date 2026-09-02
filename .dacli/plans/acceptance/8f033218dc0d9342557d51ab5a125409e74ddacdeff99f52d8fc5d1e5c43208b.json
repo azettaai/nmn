@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "8f033218dc0d9342557d51ab5a125409e74ddacdeff99f52d8fc5d1e5c43208b",
+  "task_id": "t-01M1EQ7B0X7BKQ129BGYFE27V7",
+  "issue": 105,
+  "repo": "azettaai/nmn",
+  "body_digest": "sha256:2fc91c17e4bfa109cf8cc0ae820bf09dad3ab3f1141ea34050665206b726392a",
+  "criteria": [
+    "Every GitHub Actions workflow uses `actions/checkout@v7`.",
+    "Docusaurus packages are consolidated at 3.10.2 and React/React DOM at 19.2.8 with a coherent lockfile.",
+    "Pull requests run `npm ci` and `npm run build` for the Docusaurus site on Node.js 24.",
+    "Existing workflow-policy tests cover the checkout and website-CI policy.",
+    "Superseded Dependabot PRs #27, #28, #30, #35, #41, #33, #34, #44, #45, and #46 are closed after the consolidated change lands.",
+    "Python/backend CI, website build, CodeQL, and mirror workflows are green on accepted `master`."
+  ]
+}
