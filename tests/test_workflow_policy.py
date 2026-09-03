@@ -111,14 +111,16 @@ def test_local_coverage_policy_is_fail_closed_and_combines_backend_data():
     workflow = (WORKFLOWS / "test.yml").read_text()
     project = (ROOT / "pyproject.toml").read_text()
 
-    assert workflow.count("uses: actions/upload-artifact@v7") == 3
-    assert workflow.count("uses: actions/download-artifact@v8") == 3
-    assert workflow.count("include-hidden-files: true") == 3
-    assert workflow.count("if-no-files-found: error") == 3
+    assert workflow.count("uses: actions/upload-artifact@v7") == 4
+    assert workflow.count("uses: actions/download-artifact@v8") == 4
+    assert workflow.count("include-hidden-files: true") == 4
+    assert workflow.count("if-no-files-found: error") == 4
     assert "cp .coverage .coverage.jax" in workflow
     assert "cp .coverage .coverage.torch" in workflow
     assert "cp .coverage .coverage.keras" in workflow
-    assert "needs: [test-jax, test-torch, test-keras]" in workflow
+    assert "cp .coverage .coverage.mlx" in workflow
+    assert "needs: [test-jax, test-torch, test-keras, test-mlx]" in workflow
+    assert "relative_files = true" in project
     assert "coverage combine coverage-data" in workflow
     assert "coverage report --fail-under=70" in workflow
     assert "--compare-branch=origin/${{ github.base_ref }}" in workflow

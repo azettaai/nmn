@@ -289,7 +289,7 @@ jobs:
     name: Enforce combined and changed-line coverage
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [test-jax, test-torch, test-keras]
+    needs: [test-jax, test-torch, test-keras, test-mlx]
 
     steps:
     - uses: actions/checkout@v7
@@ -321,6 +321,12 @@ jobs:
       uses: actions/download-artifact@v8
       with:
         name: coverage-keras
+        path: coverage-data
+
+    - name: Download MLX coverage
+      uses: actions/download-artifact@v8
+      with:
+        name: coverage-mlx
         path: coverage-data
 
     - name: Enforce 70% combined project coverage
@@ -441,6 +447,17 @@ jobs:
 
     - name: Run full MLX suite
       run: pytest tests/test_mlx/ -v --cov=nmn --cov-report=xml
+
+    - name: Stage MLX coverage data
+      run: cp .coverage .coverage.mlx
+
+    - name: Preserve MLX coverage for the local policy gate
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage-mlx
+        path: .coverage.mlx
+        include-hidden-files: true
+        if-no-files-found: error
 
   lint:
     name: Lint
