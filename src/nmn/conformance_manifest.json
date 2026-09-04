@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "contract_version": "2026.09",
+  "canonical": {
+    "array_format": "numpy",
+    "oracle_dtype": "float64",
+    "kernel_layout": "input_output",
+    "fixture_format": "npz",
+    "random_seed": 2026
+  },
+  "tolerances": {
+    "float64": {"rtol": 1e-10, "atol": 1e-12},
+    "float32": {"rtol": 0.0002, "atol": 0.00002},
+    "bfloat16": {"rtol": 0.02, "atol": 0.02},
+    "float16": {"rtol": 0.02, "atol": 0.02}
+  },
+  "operations": {
+    "dense": {
+      "oracle": "yat_dense_v1",
+      "outputs": ["output"],
+      "gradients": ["input", "kernel", "bias", "alpha", "epsilon"],
+      "masking": [],
+      "layout": "[..., input_features] x [input_features, output_features]"
+    },
+    "embed": {
+      "oracle": "yat_embed_v1",
+      "outputs": ["lookup", "attend"],
+      "gradients": ["embedding", "query", "alpha", "epsilon"],
+      "masking": [],
+      "layout": "[vocabulary, features]"
+    },
+    "convolution": {
+      "oracle": "yat_convolution_v1",
+      "outputs": ["output"],
+      "gradients": ["input", "kernel", "bias", "alpha", "epsilon"],
+      "masking": [],
+      "layout": "canonical channels_last; adapter owns native layout"
+    },
+    "transpose_convolution": {
+      "oracle": "yat_transpose_convolution_v1",
+      "outputs": ["output"],
+      "gradients": ["input", "kernel", "bias", "alpha", "epsilon"],
+      "masking": [],
+      "layout": "canonical channels_last; adapter owns native layout"
+    },
+    "attention": {
+      "oracle": "yat_attention_v1",
+      "outputs": ["weights", "output"],
+      "gradients": ["query", "key", "value", "bias", "alpha", "epsilon"],
+      "masking": ["boolean", "additive", "causal", "all_masked_zero"],
+      "layout": "[batch, query_or_key, heads, head_features]"
+    },
+    "may": {
+      "oracle": "maclaurin_yat_attention_v1",
+      "outputs": ["features", "output"],
+      "gradients": ["query", "key", "value", "projection", "bias", "epsilon"],
+      "masking": ["causal", "padding_when_supported"],
+      "layout": "[batch, sequence, heads, head_features]"
+    },
+    "ray": {
+      "oracle": "radial_yat_attention_v1",
+      "outputs": ["features", "output"],
+      "gradients": ["query", "key", "value", "projection", "bias", "epsilon"],
+      "masking": ["causal", "padding_when_supported"],
+      "layout": "[batch, sequence, heads, head_features]"
+    }
+  },
+  "backends": {
+    "torch": {
+      "display_name": "PyTorch",
+      "adapter": "tests.conformance.adapters.torch:TorchAdapter",
+      "ci_platform": "linux",
+      "required_in_ci": true,
+      "execution": ["eager", "compile"],
+      "dtypes": ["float16", "bfloat16", "float32", "float64"],
+      "serialization": ["state_dict", "pickle"],
+      "native_layout": "channels_first",
+      "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"]},
+      "operations": {
+        "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatNMN"},
+        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.torch.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.torch.YatConv1D|nmn.torch.YatConv2D|nmn.torch.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "declared", "api": "nmn.torch.YatConvTranspose1D|nmn.torch.YatConvTranspose2D|nmn.torch.YatConvTranspose3D"},
+        "attention": {"status": "supported", "conformance": "declared", "api": "nmn.torch.MultiHeadYatAttention"},
+        "may": {"status": "supported", "conformance": "declared", "api": "nmn.torch.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.torch.radial_yat_attention"}
+      }
+    },
+    "nnx": {
+      "display_name": "Flax NNX",
+      "adapter": "tests.conformance.adapters.nnx:NnxAdapter",
+      "ci_platform": "linux",
+      "required_in_ci": true,
+      "execution": ["eager", "jit"],
+      "dtypes": ["float16", "bfloat16", "float32", "float64"],
+      "serialization": ["flax_state", "msgpack"],
+      "native_layout": "channels_last",
+      "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal", "key_padding"], "ray": ["causal", "key_padding"]},
+      "operations": {
+        "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatNMN"},
+        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.Embed"},
+        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.YatConv"},
+        "transpose_convolution": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.YatConvTranspose"},
+        "attention": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.MultiHeadAttention"},
+        "may": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.radial_yat_attention"}
+      }
+    },
+    "linen": {
+      "display_name": "Flax Linen",
+      "adapter": "tests.conformance.adapters.linen:LinenAdapter",
+      "ci_platform": "linux",
+      "required_in_ci": true,
+      "execution": ["eager", "jit"],
+      "dtypes": ["float16", "bfloat16", "float32", "float64"],
+      "serialization": ["flax_state", "msgpack"],
+      "native_layout": "channels_last",
+      "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"]},
+      "operations": {
+        "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatNMN"},
+        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.linen.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.linen.YatConv1D|nmn.linen.YatConv2D|nmn.linen.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "declared", "api": "nmn.linen.YatConvTranspose1D|nmn.linen.YatConvTranspose2D|nmn.linen.YatConvTranspose3D"},
+        "attention": {"status": "supported", "conformance": "declared", "api": "nmn.linen.MultiHeadAttention"},
+        "may": {"status": "supported", "conformance": "declared", "api": "nmn.linen.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.linen.radial_yat_attention"}
+      }
+    },
+    "tf": {
+      "display_name": "TensorFlow",
+      "adapter": "tests.conformance.adapters.tensorflow:TensorFlowAdapter",
+      "ci_platform": "linux",
+      "required_in_ci": true,
+      "execution": ["eager", "function"],
+      "dtypes": ["float16", "bfloat16", "float32", "float64"],
+      "serialization": ["checkpoint", "saved_model"],
+      "native_layout": "channels_last",
+      "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"]},
+      "operations": {
+        "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatNMN"},
+        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.tf.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.tf.YatConv1D|nmn.tf.YatConv2D|nmn.tf.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "declared", "api": "nmn.tf.YatConvTranspose1D|nmn.tf.YatConvTranspose2D|nmn.tf.YatConvTranspose3D"},
+        "attention": {"status": "supported", "conformance": "declared", "api": "nmn.tf.MultiHeadYatAttention"},
+        "may": {"status": "supported", "conformance": "declared", "api": "nmn.tf.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.tf.radial_yat_attention"}
+      }
+    },
+    "keras": {
+      "display_name": "Keras 3",
+      "adapter": "tests.conformance.adapters.keras:KerasAdapter",
+      "ci_platform": "linux",
+      "required_in_ci": true,
+      "execution": ["eager", "compiled_call"],
+      "dtypes": ["float16", "bfloat16", "float32", "float64"],
+      "serialization": ["keras_v3", "weights"],
+      "native_layout": "channels_last",
+      "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"]},
+      "operations": {
+        "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatNMN"},
+        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.keras.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.keras.YatConv1D|nmn.keras.YatConv2D|nmn.keras.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "declared", "api": "nmn.keras.YatConvTranspose1D|nmn.keras.YatConvTranspose2D|nmn.keras.YatConvTranspose3D"},
+        "attention": {"status": "supported", "conformance": "declared", "api": "nmn.keras.MultiHeadYatAttention"},
+        "may": {"status": "supported", "conformance": "declared", "api": "nmn.keras.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.keras.radial_yat_attention"}
+      }
+    },
+    "mlx": {
+      "display_name": "MLX",
+      "adapter": "tests.conformance.adapters.mlx:MlxAdapter",
+      "ci_platform": "macos",
+      "required_in_ci": true,
+      "execution": ["eager", "compile"],
+      "dtypes": ["float16", "bfloat16", "float32"],
+      "serialization": ["safetensors", "npz"],
+      "native_layout": "channels_last",
+      "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"]},
+      "operations": {
+        "dense": {"status": "supported", "conformance": "fixture", "api": "nmn.mlx.YatNMN"},
+        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.YatConv1D|nmn.mlx.YatConv2D|nmn.mlx.YatConv3D"},
+        "transpose_convolution": {"status": "partial", "conformance": "declared", "api": "nmn.mlx.YatConvTranspose1D|nmn.mlx.YatConvTranspose2D|nmn.mlx.YatConvTranspose3D", "limitations": ["groups=1"]},
+        "attention": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.MultiHeadYatAttention"},
+        "may": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.radial_yat_attention"}
+      }
+    }
+  }
+}

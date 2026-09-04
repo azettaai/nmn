@@ -75,7 +75,7 @@ y = YatNMN(in_features=128, out_features=64)(x)   # geometric, intrinsically non
 | Requires an external activation for non-linearity      | Non-linearity is intrinsic                                              |
 | Fires for distant-but-aligned vectors (spurious)       | Penalizes distance → cleaner, prototype-like features                   |
 
-NMN ships across **PyTorch, Flax NNX, Flax Linen, Keras 3, TensorFlow, and MLX** (Apple Silicon) with numerically equivalent outputs (< 1e-6 max-abs error in fp32, verified by an integration parity matrix). Pick the framework you like; switch later without retraining math.
+NMN ships across **PyTorch, Flax NNX, Flax Linen, Keras 3, TensorFlow, and MLX** (Apple Silicon). Cross-framework support, execution modes, dtypes, serialization, and the exact enforced tolerances live in the machine-readable [`conformance_manifest.json`](src/nmn/conformance_manifest.json); the generated [conformance table](docs/generated/conformance.md) distinguishes oracle-tested paths from capabilities that are only declared.
 
 ---
 
@@ -258,7 +258,7 @@ print(model.apply(params, jnp.ones((32, 28, 28, 1))).shape)  # (32, 10)
 
 ## Choose your framework
 
-All six backends expose the same operations with framework-idiomatic naming. They are **numerically equivalent** (verified in `tests/integration/`).
+All six backends expose the same operation families with framework-idiomatic naming. The [generated conformance table](docs/generated/conformance.md) is the authority for which paths are oracle-tested, fixture-tested, partial, or only declared.
 
 | Framework      | Pick it when…                                                                   | Guide                                          |
 | -------------- | ------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -294,20 +294,12 @@ All layers are available across **all 6 frameworks** with verified parity.
 
 ### Cross-framework consistency
 
-```
-Framework Pair             │ Max Error    │ Status
-───────────────────────────┼──────────────┼────────
-PyTorch ↔ TensorFlow       │ < 1e-6       │ ✅
-PyTorch ↔ Keras            │ < 1e-6       │ ✅
-PyTorch ↔ Flax NNX         │ < 1e-6       │ ✅
-PyTorch ↔ Flax Linen       │ < 1e-6       │ ✅
-PyTorch ↔ MLX (CPU)        │ < 1e-6       │ ✅
-TensorFlow ↔ Keras         │ < 1e-7       │ ✅
-Flax NNX ↔ Flax Linen      │ < 1e-7       │ ✅
-Flax NNX ↔ MLX (CPU)       │ < 1e-6       │ ✅
-```
+The conformance harness compares backend results with an independent NumPy
+float64 oracle. The enforced float32 dense tolerance is `rtol=2e-4` and
+`atol=2e-5`; lower-precision profiles and every capability declaration are
+read from the same packaged manifest used by the tests.
 
-Run yourself: `pytest tests/integration/test_cross_framework_consistency.py -v`.
+Run it yourself: `pytest tests/conformance -v`.
 
 ### Bias-aware linear-attention feature maps (MAY / RAY)
 
@@ -414,7 +406,7 @@ See [`tests/README.md`](tests/README.md) for the suite layout and
 | Area                       | Status                                                              |
 | -------------------------- | ------------------------------------------------------------------- |
 | Core layers across 6 frameworks | ✅ Production-ready, on PyPI                                  |
-| Cross-framework consistency tests | ✅ Verified < 1e-6 in fp32                                  |
+| Cross-framework conformance contract | ✅ Machine-readable matrix + oracle/fixture harness    |
 | Documentation               | ✅ Per-platform guides, architecture, migration                     |
 | ONNX export                | 🚧 Should work (standard ops) — not yet covered in CI ([TODO.md](TODO.md)) |
 | INT8 quantization          | 🚧 Not yet implemented ([TODO.md](TODO.md))                         |

@@ -45,7 +45,10 @@ Each guide is self-contained: install → hello world → MNIST → CNN → atte
 | **TensorFlow** | You need TF-specific deployment (TFLite, Serving) or `tf.Module`-level control.            |
 | **MLX**        | You're on Apple Silicon and want the best perf-per-watt + native Metal GPU acceleration.   |
 
-All six **produce numerically equivalent outputs** (max abs error < 1e-6 in fp32). You can prototype in one and serve from another.
+All six expose the NMN operation families. Consult the generated
+[cross-framework conformance contract](generated/conformance.md) before porting:
+it distinguishes oracle-tested and fixture-tested behavior from declared or
+partial capabilities and publishes the exact tolerances enforced by CI.
 
 ---
 
