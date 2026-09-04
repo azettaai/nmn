@@ -18,6 +18,9 @@ from flax.linen.module import Module, compact
 from jax import Array
 
 # Re-export attention functions from NNX (same JAX backend)
+from nmn.nnx.layers.attention._attention_core import (
+    validate_attention_normalization,
+)
 from nmn.nnx.layers.attention.yat_attention import (
     normalize_qk,
 )
@@ -46,6 +49,8 @@ def yat_attention_weights(
     epsilon: float = 1e-5,
     alpha: Optional[Array] = None,
     spherical: bool = False,
+    bias: Optional[Array] = None,
+    normalization: str = "softmax",
 ) -> Array:
     """Computes YAT attention weights.
 
@@ -61,6 +66,8 @@ def yat_attention_weights(
         epsilon: Numerical stability constant.
         alpha: Optional alpha scaling parameter.
         spherical: If True, normalize Q/K first.
+        bias: Optional signed additive attention bias.
+        normalization: ``"softmax"``, ``"l1"``, or ``"softermax"``.
 
     Returns:
         Attention weights (..., num_heads, q_len, kv_len).
@@ -76,6 +83,8 @@ def yat_attention_weights(
         deterministic=deterministic,
         epsilon=epsilon,
         alpha=alpha,
+        bias=bias,
+        normalization=normalization,
     )
 
 
@@ -89,8 +98,10 @@ def yat_attention(
     epsilon: float = 1e-5,
     alpha: Optional[Array] = None,
     spherical: bool = False,
+    bias: Optional[Array] = None,
+    normalization: str = "softmax",
 ) -> Array:
-    """Computes YAT attention: softmax((Q.K)^2 / (||Q-K||^2 + eps)) . V
+    """Computes normalized YAT attention over values.
 
     Args:
         query: (..., q_len, num_heads, head_dim)
@@ -102,6 +113,8 @@ def yat_attention(
         epsilon: Numerical stability constant.
         alpha: Optional alpha scaling.
         spherical: If True, normalize Q/K first.
+        bias: Optional signed additive attention bias.
+        normalization: ``"softmax"``, ``"l1"``, or ``"softermax"``.
 
     Returns:
         Output (..., q_len, num_heads, v_dim).
@@ -118,6 +131,8 @@ def yat_attention(
         deterministic=deterministic,
         epsilon=epsilon,
         alpha=alpha,
+        bias=bias,
+        normalization=normalization,
     )
 
 
@@ -130,6 +145,8 @@ def yat_attention_normalized(
     deterministic: bool = True,
     epsilon: float = 1e-5,
     alpha: Optional[Array] = None,
+    bias: Optional[Array] = None,
+    normalization: str = "softmax",
 ) -> Array:
     """YAT attention with normalized Q/K (optimized)."""
     return yat_attention(
@@ -142,6 +159,8 @@ def yat_attention_normalized(
         epsilon=epsilon,
         alpha=alpha,
         spherical=True,
+        bias=bias,
+        normalization=normalization,
     )
 
 
@@ -163,9 +182,9 @@ class MultiHeadAttention(Module):
         constant_alpha: If True, use sqrt(2). If float, use that value.
         normalize_qk: Whether to L2-normalize Q and K (default: False).
         spherical: If True, use spherical YAT formula (default: False).
-        normalization: Score normalization, either ``"softmax"`` (default) or
-            ``"l1"``. Constant and learnable alpha both scale scores before
-            this normalization.
+        normalization: Score normalization: ``"softmax"`` (default), ``"l1"``,
+            or ``"softermax"``. Constant and learnable alpha both scale scores
+            before this normalization.
         epsilon: Numerical stability constant (default: 1e-5).
         dtype: Computation dtype.
         param_dtype: Parameter dtype (default: float32).
@@ -213,11 +232,7 @@ class MultiHeadAttention(Module):
         Returns:
             Output (batch, q_len, out_features).
         """
-        if self.normalization not in ("softmax", "l1"):
-            raise ValueError(
-                "normalization must be either 'softmax' or 'l1', got "
-                f"{self.normalization!r}"
-            )
+        validate_attention_normalization(self.normalization)
         if inputs_k is None:
             inputs_k = inputs_q
         if inputs_v is None:

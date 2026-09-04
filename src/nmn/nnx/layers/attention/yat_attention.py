@@ -95,9 +95,9 @@ def yat_attention_weights(
             or a float value (constant). If None, no alpha scaling is applied.
         normalization: Normalization method for attention weights. One of:
             - ``"softmax"`` (default): standard softmax normalization.
-            - ``"l1"``: L1 normalization (score / sum(scores)). More natural
-              for YAT since scores are already non-negative — no exp() overflow.
-            - ``"softermax"``: softermax normalization (requires use_softermax=True).
+            - ``"l1"``: clip signed biased scores to non-negative values, then
+              divide by their row sum (with a uniform eligible-row fallback).
+            - ``"softermax"``: softermax normalization.
 
     Returns:
         Attention weights of shape [..., num_heads, q_length, kv_length]

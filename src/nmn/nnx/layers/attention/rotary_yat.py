@@ -50,6 +50,7 @@ from nmn._attention_shape import validate_attention_inputs
 from nmn.nnx.layers.squashers import softermax
 
 from .._numerics import fp32_if_low_precision, inverse_softplus
+from ._attention_core import validate_attention_normalization
 from .maclaurin_yat import (
     _validate_linear_attention_mask,
     create_maclaurin_projection,
@@ -508,6 +509,8 @@ class RotaryYatAttention(Module):
                 use_alpha=True.
             rngs: Random number generators.
         """
+        validate_attention_normalization(normalization)
+
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
