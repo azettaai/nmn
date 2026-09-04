@@ -36,7 +36,7 @@ class MlxAdapter:
             weight_normalized=configuration.weight_normalized,
             epsilon=float(case.epsilon),
             learnable_epsilon=configuration.learnable_epsilon,
-            param_dtype=mx.float32,
+            dtype=mx.float32,
         )
         layer.build(case.kernel.shape[0])
         layer.kernel = mx.array(case.kernel.T, dtype=mx.float32)
@@ -85,18 +85,18 @@ class MlxAdapter:
         def evaluate(values):
             (value, output), parameter_values = parameter_grad(layer, values)
             del value
-            return output, parameter_values, input_grad(values)
+            raw_scale = mx.sigmoid(layer.epsilon_param)
+            gradients = {
+                "input": input_grad(values),
+                "kernel": mx.transpose(parameter_values["kernel"]),
+                "bias": parameter_values["bias"],
+                "alpha": mx.squeeze(parameter_values["alpha"]),
+                "epsilon": mx.squeeze(parameter_values["epsilon_param"] / raw_scale),
+            }
+            return output, gradients
 
         function = mx.compile(evaluate, inputs=layer.state) if compiled else evaluate
-        output, parameter_values, input_value = function(inputs)
-        raw_scale = mx.sigmoid(layer.epsilon_param)
-        gradients = {
-            "input": input_value,
-            "kernel": mx.transpose(parameter_values["kernel"]),
-            "bias": parameter_values["bias"],
-            "alpha": mx.squeeze(parameter_values["alpha"]),
-            "epsilon": mx.squeeze(parameter_values["epsilon_param"] / raw_scale),
-        }
+        output, gradients = function(inputs)
         mx.eval(output, gradients)
         return OracleResult(
             np.asarray(output),
@@ -119,13 +119,13 @@ class MlxAdapter:
         gradient_fn = nn.value_and_grad(
             layer, lambda model, values: mx.sum(model(values) * cotangent)
         )
-        function = (
-            mx.compile(lambda values: gradient_fn(layer, values), inputs=layer.state)
-            if compiled
-            else lambda values: gradient_fn(layer, values)
-        )
-        _, gradients = function(indices)
-        output = layer(indices)
+
+        def evaluate(values):
+            _, gradients = gradient_fn(layer, values)
+            return layer(values), gradients
+
+        function = mx.compile(evaluate, inputs=layer.state) if compiled else evaluate
+        output, gradients = function(indices)
         mx.eval(output, gradients)
         return OracleResult(
             np.asarray(output), {"embedding": np.asarray(gradients["embedding"])}
@@ -195,7 +195,7 @@ class MlxAdapter:
             dtype=mx.float32,
         )
         layer.build(case.inputs.shape[-1])
-        kernel = (
+        kernel = np.ascontiguousarray(
             case.kernel[::-1].transpose(2, 0, 1)
             if transpose
             else case.kernel.transpose(2, 0, 1)
@@ -213,21 +213,21 @@ class MlxAdapter:
         def evaluate(values):
             _, parameter_gradients = parameter_fn(layer, values)
             _, input_gradient = input_fn(values)
-            return layer(values), parameter_gradients, input_gradient
+            kernel_gradient = mx.transpose(parameter_gradients["kernel"], (1, 2, 0))
+            if transpose:
+                kernel_gradient = kernel_gradient[::-1]
+            raw_scale = mx.sigmoid(layer.epsilon_param)
+            gradients = {
+                "input": input_gradient,
+                "kernel": kernel_gradient,
+                "bias": parameter_gradients["bias"],
+                "alpha": mx.squeeze(parameter_gradients["alpha"]),
+                "epsilon": mx.squeeze(parameter_gradients["epsilon_param"] / raw_scale),
+            }
+            return layer(values), gradients
 
         function = mx.compile(evaluate, inputs=layer.state) if compiled else evaluate
-        output, parameter_gradients, input_gradient = function(inputs)
-        kernel_gradient = mx.transpose(parameter_gradients["kernel"], (1, 2, 0))
-        if transpose:
-            kernel_gradient = kernel_gradient[::-1]
-        raw_scale = mx.sigmoid(layer.epsilon_param)
-        gradients = {
-            "input": input_gradient,
-            "kernel": kernel_gradient,
-            "bias": parameter_gradients["bias"],
-            "alpha": mx.squeeze(parameter_gradients["alpha"]),
-            "epsilon": mx.squeeze(parameter_gradients["epsilon_param"] / raw_scale),
-        }
+        output, gradients = function(inputs)
         mx.eval(output, gradients)
         return OracleResult(
             np.asarray(output),
@@ -246,15 +246,24 @@ class MlxAdapter:
         cotangent = mx.array(case.cotangent, dtype=mx.float32)
 
         def loss(query, key, value, alpha, epsilon):
+            output = yat_attention(
+                query, key, value, mask=mask, epsilon=epsilon, alpha=alpha
+            )
+            return mx.sum(output * cotangent)
+
+        gradient_fn = mx.value_and_grad(loss, argnums=(0, 1, 2, 3, 4))
+
+        def evaluate(query, key, value, alpha, epsilon):
+            _, gradients = gradient_fn(query, key, value, alpha, epsilon)
             weights = yat_attention_weights(
                 query, key, mask=mask, epsilon=epsilon, alpha=alpha
             )
             output = yat_attention(
                 query, key, value, mask=mask, epsilon=epsilon, alpha=alpha
             )
-            return mx.sum(output * cotangent), (weights, output)
+            return weights, output, gradients
 
-        function = mx.value_and_grad(loss, argnums=(0, 1, 2, 3, 4), has_aux=True)
+        function = evaluate
         if compiled:
             function = mx.compile(function)
         operands = tuple(
@@ -267,7 +276,7 @@ class MlxAdapter:
                 case.epsilon,
             )
         )
-        (_, (weights, output)), values = function(*operands)
+        weights, output, values = function(*operands)
         gradients = dict(zip(("query", "key", "value", "alpha", "epsilon"), values))
         mx.eval(weights, output, gradients)
         return AttentionResult(
@@ -307,6 +316,20 @@ class MlxAdapter:
         cotangent = mx.array(case.cotangent, dtype=mx.float32)
 
         def loss(query, key, value):
+            output = attention_fn(
+                query,
+                key,
+                value,
+                params,
+                causal=case.causal,
+                epsilon=float(case.epsilon),
+            )
+            return mx.sum(output * cotangent)
+
+        gradient_fn = mx.value_and_grad(loss, argnums=(0, 1, 2))
+
+        def evaluate(query, key, value):
+            _, gradients = gradient_fn(query, key, value)
             query_features = feature_fn(query, params)
             key_features = feature_fn(key, params)
             output = attention_fn(
@@ -317,16 +340,16 @@ class MlxAdapter:
                 causal=case.causal,
                 epsilon=float(case.epsilon),
             )
-            return mx.sum(output * cotangent), (query_features, key_features, output)
+            return query_features, key_features, output, gradients
 
-        function = mx.value_and_grad(loss, argnums=(0, 1, 2), has_aux=True)
+        function = evaluate
         if compiled:
             function = mx.compile(function)
         operands = tuple(
             mx.array(item, dtype=mx.float32)
             for item in (case.query, case.key, case.value)
         )
-        (_, (query_features, key_features, output)), gradients = function(*operands)
+        query_features, key_features, output, gradients = function(*operands)
         mx.eval(query_features, key_features, output, gradients)
         return LinearAttentionResult(
             np.asarray(query_features),
