@@ -314,6 +314,8 @@ class KerasAdapter:
             )
             for name, value in case.projection.items()
         }
+        if case.kind == "ray":
+            params["b"] = params.pop("bias")
         feature_fn, attention_fn = (
             (maclaurin_features, maclaurin_yat_attention)
             if case.kind == "may"

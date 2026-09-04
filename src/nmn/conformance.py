@@ -22,6 +22,72 @@ SUPPORT_STATES = {"supported", "partial", "unsupported"}
 CONFORMANCE_STATES = {"oracle", "fixture", "declared"}
 EVIDENCE_KINDS = CONFORMANCE_STATES
 KERAS_ENGINES = {"not_applicable", "tensorflow", "jax", "torch"}
+CONFIG_KEYS = {
+    "dense": {"case", "in_features", "out_features", "bias", "lazy"},
+    "embed": {
+        "case",
+        "num_embeddings",
+        "features",
+        "lookup_shape",
+        "query_length",
+        "epsilon",
+    },
+    "convolution": {
+        "case",
+        "spatial_rank",
+        "input_channels",
+        "output_channels",
+        "kernel_size",
+        "bias",
+        "alpha",
+        "learnable_epsilon",
+    },
+    "transpose_convolution": {
+        "case",
+        "spatial_rank",
+        "input_channels",
+        "output_channels",
+        "kernel_size",
+        "groups",
+        "bias",
+        "alpha",
+        "learnable_epsilon",
+    },
+    "attention": {"case", "num_heads", "head_features", "causal"},
+    "may": {
+        "case",
+        "num_heads",
+        "head_features",
+        "num_features",
+        "causal",
+        "fixed_projection_fixture",
+        "gradient_scope",
+        "denominator_profile",
+        "semantic_limitations",
+    },
+    "ray": {
+        "case",
+        "num_heads",
+        "head_features",
+        "sketch_m",
+        "num_radial",
+        "radial_dim",
+        "causal",
+        "fixed_projection_fixture",
+        "gradient_scope",
+        "denominator_profile",
+        "semantic_limitations",
+    },
+}
+CONFIG_CASES = {
+    "dense": "dense_v1",
+    "embed": "embed_lookup_and_attend_v1",
+    "convolution": "convolution_1d_valid_v1",
+    "transpose_convolution": "transpose_convolution_1d_valid_v1",
+    "attention": "attention_v1",
+    "may": "may_v1",
+    "ray": "ray_v1",
+}
 
 
 class ContractError(ValueError):
@@ -46,10 +112,19 @@ def _mapping(value: Any, path: str) -> Mapping[str, Any]:
     return value
 
 
-def _require_keys(value: Mapping[str, Any], keys: set[str], path: str) -> None:
+def _require_keys(
+    value: Mapping[str, Any],
+    keys: set[str],
+    path: str,
+    *,
+    optional: set[str] | None = None,
+) -> None:
     missing = sorted(keys - value.keys())
     if missing:
         raise ContractError(f"{path} is missing required keys: {', '.join(missing)}")
+    unexpected = sorted(value.keys() - keys - (optional or set()))
+    if unexpected:
+        raise ContractError(f"{path} has unexpected keys: {', '.join(unexpected)}")
 
 
 def _string(value: Any, path: str, *, nonempty: bool = True) -> str:
@@ -94,11 +169,92 @@ def _validate_coverage(
     return supported, tested
 
 
+def _validate_config(
+    config: Mapping[str, Any],
+    *,
+    path: str,
+    backend_name: str,
+    operation_name: str,
+    operation: Mapping[str, Any],
+) -> None:
+    optional = {"key_padding_executed"} if backend_name == "nnx" else set()
+    _require_keys(config, CONFIG_KEYS[operation_name], path, optional=optional)
+    if config["case"] != CONFIG_CASES[operation_name]:
+        raise ContractError(f"{path}.case must be {CONFIG_CASES[operation_name]!r}")
+    integer_keys = CONFIG_KEYS[operation_name] & {
+        "in_features",
+        "out_features",
+        "num_embeddings",
+        "features",
+        "query_length",
+        "spatial_rank",
+        "input_channels",
+        "output_channels",
+        "kernel_size",
+        "groups",
+        "num_heads",
+        "head_features",
+        "num_features",
+        "sketch_m",
+        "num_radial",
+        "radial_dim",
+    }
+    for key in integer_keys:
+        value = config[key]
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ContractError(f"{path}.{key} must be a positive integer")
+    for key in CONFIG_KEYS[operation_name] & {
+        "bias",
+        "lazy",
+        "alpha",
+        "learnable_epsilon",
+        "causal",
+    }:
+        _boolean(config[key], f"{path}.{key}")
+    if operation_name == "embed":
+        lookup_shape = config["lookup_shape"]
+        if (
+            not isinstance(lookup_shape, list)
+            or not lookup_shape
+            or any(
+                not isinstance(value, int) or isinstance(value, bool) or value <= 0
+                for value in lookup_shape
+            )
+        ):
+            raise ContractError(f"{path}.lookup_shape must contain positive integers")
+        if config["epsilon"] != "static":
+            raise ContractError(f"{path}.epsilon must be 'static'")
+    if operation_name in {"may", "ray"}:
+        if config["fixed_projection_fixture"] != "linear_attention_v1":
+            raise ContractError(
+                f"{path}.fixed_projection_fixture must be 'linear_attention_v1'"
+            )
+        if config["denominator_profile"] != "positive":
+            raise ContractError(f"{path}.denominator_profile must be 'positive'")
+        gradients = _string_list(
+            config["gradient_scope"], f"{path}.gradient_scope", nonempty=True
+        )
+        if gradients != operation["gradients"]:
+            raise ContractError(f"{path}.gradient_scope must match operation gradients")
+        _string_list(
+            config["semantic_limitations"],
+            f"{path}.semantic_limitations",
+            nonempty=True,
+        )
+    if "key_padding_executed" in config:
+        _boolean(config["key_padding_executed"], f"{path}.key_padding_executed")
+        if operation_name not in {"may", "ray"}:
+            raise ContractError(
+                f"{path}.key_padding_executed is valid only for MAY/RAY"
+            )
+
+
 def _validate_profile(
     profile: Any,
     *,
     path: str,
     backend_name: str,
+    operation_name: str,
     backend: Mapping[str, Any],
     operation: Mapping[str, Any],
     capability: Mapping[str, Any],
@@ -133,6 +289,13 @@ def _validate_profile(
     config = _mapping(profile["config"], f"{path}.config")
     if not config:
         raise ContractError(f"{path}.config must not be empty")
+    _validate_config(
+        config,
+        path=f"{path}.config",
+        backend_name=backend_name,
+        operation_name=operation_name,
+        operation=operation,
+    )
     _string(profile["layout"], f"{path}.layout")
     masking = _string_list(profile["masking"], f"{path}.masking")
     _subset(masking, backend["masking"][operation["mask_key"]], f"{path}.masking")
@@ -315,7 +478,12 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
         for operation_name in OPERATIONS:
             capability_path = f"{path}.operations.{operation_name}"
             capability = _mapping(backend_operations[operation_name], capability_path)
-            _require_keys(capability, {"status", "conformance", "api"}, capability_path)
+            _require_keys(
+                capability,
+                {"status", "conformance", "api"},
+                capability_path,
+                optional={"limitations"},
+            )
             status = _string(capability["status"], f"{capability_path}.status")
             conformance = _string(
                 capability["conformance"], f"{capability_path}.conformance"
@@ -325,6 +493,12 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
             if conformance not in CONFORMANCE_STATES:
                 raise ContractError(f"{capability_path}.conformance is invalid")
             api_names = _string(capability["api"], f"{capability_path}.api").split("|")
+            if "limitations" in capability:
+                _string_list(
+                    capability["limitations"],
+                    f"{capability_path}.limitations",
+                    nonempty=True,
+                )
             if any(not name.startswith(f"nmn.{backend_name}.") for name in api_names):
                 raise ContractError(
                     f"{capability_path}.api must contain fully qualified nmn.{backend_name} symbols"
@@ -338,6 +512,7 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
                 backend_profiles[operation_name],
                 path=f"contract.profiles.{backend_name}.{operation_name}",
                 backend_name=backend_name,
+                operation_name=operation_name,
                 backend=backend,
                 operation=operation,
                 capability=capability,
@@ -385,12 +560,26 @@ def render_support_markdown(contract: Mapping[str, Any] | None = None) -> str:
                 f"{capability['status']} / {capability['conformance']} ({tested})"
             )
         lines.append(f"| {operation_name} | " + " | ".join(cells) + " |")
-    lines.extend(["", "## Enforced tolerances", ""])
-    lines.append("| Dtype | rtol | atol |")
-    lines.append("| --- | ---: | ---: |")
+    lines.extend(
+        [
+            "",
+            "## Tolerance policy",
+            "",
+            "A tolerance is enforced only when at least one exact profile tests that dtype.",
+        ]
+    )
+    lines.append("| Dtype | rtol | atol | Status |")
+    lines.append("| --- | ---: | ---: | --- |")
+    enforced_dtypes = {
+        dtype
+        for backend_profiles in contract["profiles"].values()
+        for profile in backend_profiles.values()
+        for dtype in profile["dtypes"]["tested"]
+    }
     for dtype, tolerance in contract["tolerances"].items():
+        status = "enforced" if dtype in enforced_dtypes else "declared, not tested"
         lines.append(
-            f"| {dtype} | {tolerance['rtol']:.12g} | {tolerance['atol']:.12g} |"
+            f"| {dtype} | {tolerance['rtol']:.12g} | {tolerance['atol']:.12g} | {status} |"
         )
     return "\n".join(lines) + "\n"
 

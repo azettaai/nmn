@@ -390,7 +390,7 @@ pip install "nmn[test]"
 
 pytest tests/                                      # everything
 pytest tests/test_torch/                           # one framework
-pytest tests/integration/                          # cross-framework parity
+pytest tests/conformance/                          # cross-framework parity
 pytest tests/ -m "not slow"                        # skip slow tests
 pytest tests/ --cov=nmn --cov-report=html          # coverage report
 ```

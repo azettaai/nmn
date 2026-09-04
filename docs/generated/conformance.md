@@ -27,11 +27,12 @@ A cell is verified only when it names tested dtypes, execution modes, and eviden
 | may | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
 | ray | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
 
-## Enforced tolerances
+## Tolerance policy
 
-| Dtype | rtol | atol |
-| --- | ---: | ---: |
-| float64 | 1e-10 | 1e-12 |
-| float32 | 0.0002 | 2e-05 |
-| bfloat16 | 0.02 | 0.02 |
-| float16 | 0.02 | 0.02 |
+A tolerance is enforced only when at least one exact profile tests that dtype.
+| Dtype | rtol | atol | Status |
+| --- | ---: | ---: | --- |
+| float64 | 1e-10 | 1e-12 | declared, not tested |
+| float32 | 0.0002 | 2e-05 | enforced |
+| bfloat16 | 0.02 | 0.02 | declared, not tested |
+| float16 | 0.02 | 0.02 | declared, not tested |
