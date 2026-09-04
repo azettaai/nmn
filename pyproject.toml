@@ -98,6 +98,7 @@ python_functions = ["test_*"]
 addopts = ["--verbose", "--tb=short", "--strict-markers"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "benchmark: explicit performance measurements excluded from correctness CI",
 ]
 
 [tool.mypy]

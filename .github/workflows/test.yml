@@ -93,7 +93,7 @@ jobs:
     - name: Run minimum-version JAX tests with coverage
       if: matrix.dependencies == 'minimum'
       run: |
-        pytest tests/test_nnx/ tests/test_linen/ tests/integration/ tests/benchmarks/ -v -m "not slow" --cov=nmn --cov-report=xml
+        pytest tests/test_nnx/ tests/test_linen/ tests/integration/ -v -m "not slow" --cov=nmn --cov-report=xml
       env:
         JAX_PLATFORM_NAME: cpu
 
