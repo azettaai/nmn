@@ -87,7 +87,7 @@ def test_sync_fast_forwards_across_workflow_file_change(repositories):
 
 
 def test_sync_refuses_divergent_master(repositories):
-    canonical, mirror, author, runner = repositories
+    _canonical, mirror, author, runner = repositories
     (author / "canonical.txt").write_text("canonical\n")
     _git(author, "add", "canonical.txt")
     _git(author, "commit", "-m", "canonical change")
@@ -112,7 +112,7 @@ def test_sync_refuses_divergent_master(repositories):
 
 
 def test_sync_refuses_tag_rewrite_before_branch_push(repositories):
-    canonical, mirror, author, runner = repositories
+    _canonical, mirror, author, runner = repositories
     (author / "canonical.txt").write_text("canonical\n")
     _git(author, "add", "canonical.txt")
     _git(author, "commit", "-m", "canonical change")
@@ -130,7 +130,7 @@ def test_sync_refuses_tag_rewrite_before_branch_push(repositories):
 
 
 def test_sync_atomically_refuses_branch_when_server_rejects_tag(repositories):
-    canonical, mirror, author, runner = repositories
+    _canonical, mirror, author, runner = repositories
     (author / "canonical.txt").write_text("canonical\n")
     _git(author, "add", "canonical.txt")
     _git(author, "commit", "-m", "canonical change")
