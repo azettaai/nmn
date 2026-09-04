@@ -11,7 +11,7 @@ import importlib.util
 import os
 import sys
 import warnings
-from typing import List, Optional
+from typing import Any, List, Optional
 
 # JAX / Flax / Optax / Sharding
 import jax
@@ -39,13 +39,13 @@ wandb = lazy_example_dependency(
 datasets = lazy_example_dependency(
     "datasets", install=_INSTALL, purpose="The TPU ResNet data example"
 )
-grain = lazy_example_dependency(
+grain: Any = lazy_example_dependency(
     "grain.python", install=_INSTALL, purpose="The TPU ResNet Grain data example"
 )
-torch_data = lazy_example_dependency(
+torch_data: Any = lazy_example_dependency(
     "torch.utils.data", install=_INSTALL, purpose="The TPU ResNet fallback data example"
 )
-png_image_plugin = lazy_example_dependency(
+png_image_plugin: Any = lazy_example_dependency(
     "PIL.PngImagePlugin",
     install=_INSTALL,
     purpose="The TPU ResNet fallback data example",
@@ -990,7 +990,11 @@ def main():
         print("!" * 80 + "\n")
         png_image_plugin.MAX_TEXT_CHUNK = 100 * (1024**2)
 
-        # Setup PyTorch DataLoader fallback with in-memory option
+        # Setup PyTorch DataLoader fallback with in-memory option. These two
+        # variables intentionally hold either the streaming adapter or the
+        # map-style dataset selected below.
+        train_dataset: Any
+        val_dataset: Any
         if args.streaming:
             print("Using Streaming Dataset")
             train_dataset = ImageNetStreamDataset(
