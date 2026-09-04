@@ -5,7 +5,6 @@ The suite is organized by the boundary it verifies:
 - `test_<backend>/` — backend-specific unit and regression tests;
 - `conformance/` — manifest-driven NumPy-oracle and fixture conformance;
 - `integration/` — package-level behavior spanning multiple components;
-- `benchmarks/` — small performance assertions that are safe in CI;
 - `test_cli.py` — import-light command-line behavior;
 - `test_collection_policy.py` — optional-backend and collection isolation;
 - `test_documentation_policy.py` — installation and release-metadata invariants;
