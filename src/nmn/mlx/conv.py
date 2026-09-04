@@ -34,6 +34,9 @@ from typing import List, Optional, Sequence, Tuple, Union
 import mlx.core as mx
 import mlx.nn as nn
 
+from nmn._epsilon import validate_epsilon
+
+from ._epsilon import make_epsilon_parameter
 from ._yat_core import yat_score
 
 # ---------------------------------------------------------------------------
@@ -235,8 +238,7 @@ class _YatConvBase(nn.Module):
         super().__init__()
         if self._ndim == 0:
             raise TypeError("_YatConvBase is not meant to be instantiated directly")
-        if epsilon <= 0:
-            raise ValueError(f"epsilon must be positive, got {epsilon}")
+        epsilon = validate_epsilon(epsilon)
         if groups < 1:
             raise ValueError(f"groups must be >= 1, got {groups}")
         if not 0.0 <= drop_rate < 1.0:
@@ -293,8 +295,7 @@ class _YatConvBase(nn.Module):
             )
         if self.filters % self.groups != 0:
             raise ValueError(
-                f"filters ({self.filters}) must be divisible by groups "
-                f"({self.groups})"
+                f"filters ({self.filters}) must be divisible by groups ({self.groups})"
             )
         self.input_channels = input_channels
 
@@ -312,8 +313,7 @@ class _YatConvBase(nn.Module):
         if self.use_alpha and self._constant_alpha_value is None:
             self.alpha = mx.ones((1,), dtype=self.dtype)
         if self.learnable_epsilon:
-            raw_eps = math.log(math.exp(self.epsilon) - 1.0)
-            self.epsilon_param = mx.array([raw_eps], dtype=self.dtype)
+            self.epsilon_param = make_epsilon_parameter(self.epsilon, self.dtype)
 
         self.is_built = True
 
@@ -486,8 +486,7 @@ class _YatConvTransposeBase(nn.Module):
             raise TypeError(
                 "_YatConvTransposeBase is not meant to be instantiated directly"
             )
-        if epsilon <= 0:
-            raise ValueError(f"epsilon must be positive, got {epsilon}")
+        epsilon = validate_epsilon(epsilon)
         if not 0.0 <= drop_rate < 1.0:
             raise ValueError(f"drop_rate must be in [0, 1), got {drop_rate}")
 
@@ -550,8 +549,7 @@ class _YatConvTransposeBase(nn.Module):
         if self.use_alpha and self._constant_alpha_value is None:
             self.alpha = mx.ones((1,), dtype=self.dtype)
         if self.learnable_epsilon:
-            raw_eps = math.log(math.exp(self.epsilon) - 1.0)
-            self.epsilon_param = mx.array([raw_eps], dtype=self.dtype)
+            self.epsilon_param = make_epsilon_parameter(self.epsilon, self.dtype)
 
         self.is_built = True
 

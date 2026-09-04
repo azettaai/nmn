@@ -23,6 +23,8 @@ import mlx.core as mx
 import mlx.nn as nn
 import numpy as np
 
+from nmn._epsilon import validate_epsilon
+
 from .attention import yat_attention_weights
 
 __all__ = [
@@ -223,14 +225,12 @@ class RotaryYatAttention(nn.Module):
         super().__init__()
         if embed_dim % num_heads != 0:
             raise ValueError(
-                f"embed_dim ({embed_dim}) must be divisible by "
-                f"num_heads ({num_heads})."
+                f"embed_dim ({embed_dim}) must be divisible by num_heads ({num_heads})."
             )
         head_dim = embed_dim // num_heads
         if head_dim % 2 != 0:
             raise ValueError(f"head_dim ({head_dim}) must be even for RoPE.")
-        if epsilon <= 0:
-            raise ValueError(f"epsilon must be positive, got {epsilon}")
+        epsilon = validate_epsilon(epsilon)
 
         self.embed_dim = embed_dim
         self.num_heads = num_heads
