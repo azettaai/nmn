@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +42,28 @@ def test_packaged_contract_is_valid_json_and_complete():
             ),
             "status is invalid",
         ),
+        (
+            lambda value: value["profiles"]["torch"]["dense"].__setitem__(
+                "dtypes", "float32"
+            ),
+            "dtypes must be an object",
+        ),
+        (
+            lambda value: value["profiles"]["torch"]["dense"].__setitem__("config", {}),
+            "config must not be empty",
+        ),
+        (
+            lambda value: value["profiles"]["tf"]["embed"]["dtypes"].__setitem__(
+                "tested", ["float32"]
+            ),
+            "declared evidence must not claim test coverage",
+        ),
+        (
+            lambda value: value["backends"]["torch"]["operations"]["dense"].__setitem__(
+                "status", "unsupported"
+            ),
+            "unsupported capability must not claim support or tests",
+        ),
     ],
 )
 def test_contract_validator_fails_closed(mutation, message):
@@ -52,6 +75,32 @@ def test_contract_validator_fails_closed(mutation, message):
         validate_contract(contract)
 
 
+def test_every_capability_has_an_exact_profile_cell():
+    contract = load_contract()
+    for backend_name, backend in contract["backends"].items():
+        profiles = contract["profiles"][backend_name]
+        assert set(profiles) == set(backend["operations"])
+        for operation_name, profile in profiles.items():
+            assert set(profile) == {
+                "dtypes",
+                "modes",
+                "keras_engine",
+                "config",
+                "layout",
+                "masking",
+                "serialization",
+                "evidence",
+            }
+            assert profile["dtypes"]["supported"]
+            assert profile["modes"]["supported"]
+            assert profile["config"]
+            assert profile["serialization"]
+            if backend["operations"][operation_name]["conformance"] == "declared":
+                assert profile["dtypes"]["tested"] == []
+                assert profile["modes"]["tested"] == []
+                assert profile["evidence"]["tests"] == []
+
+
 def test_contract_loader_imports_no_optional_framework():
     program = """
 import json, sys
@@ -61,14 +110,42 @@ print(json.dumps(sorted(name for name in sys.modules if name.split('.')[0] in {
     'torch', 'tensorflow', 'keras', 'jax', 'flax', 'mlx'
 })))
 """
+    environment = os.environ.copy()
+    source = str(ROOT / "src")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (source, environment.get("PYTHONPATH", "")) if part
+    )
     result = subprocess.run(
         [sys.executable, "-c", program],
         cwd=ROOT,
         check=True,
         capture_output=True,
         text=True,
+        env=environment,
     )
     assert json.loads(result.stdout) == []
+
+
+@pytest.mark.parametrize("engine", ["jax", "torch"])
+def test_keras_adapter_does_not_claim_unimplemented_engines(engine):
+    program = """
+from tests.conformance.adapters.keras import KerasAdapter
+assert KerasAdapter.available() is False
+"""
+    environment = os.environ.copy()
+    environment["KERAS_BACKEND"] = engine
+    source = str(ROOT / "src")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(ROOT), source, environment.get("PYTHONPATH", "")) if part
+    )
+    subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
 
 
 def test_generated_support_document_is_current():

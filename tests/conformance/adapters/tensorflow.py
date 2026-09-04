@@ -6,7 +6,12 @@ import importlib.util
 
 import numpy as np
 
-from tests.conformance.oracle import DenseCase, OracleResult
+from tests.conformance.oracle import (
+    AttentionCase,
+    AttentionResult,
+    DenseCase,
+    OracleResult,
+)
 
 
 class TensorFlowAdapter:
@@ -77,4 +82,44 @@ class TensorFlowAdapter:
         return OracleResult(
             np.asarray(output),
             {name: np.asarray(value) for name, value in gradients.items()},
+        )
+
+    @staticmethod
+    def attention_value_and_grad(
+        case: AttentionCase, *, compiled: bool = False
+    ) -> AttentionResult:
+        import tensorflow as tf
+
+        from nmn.tf import yat_attention, yat_attention_weights
+
+        mask = tf.convert_to_tensor(case.mask, dtype=tf.bool)
+        cotangent = tf.convert_to_tensor(case.cotangent, dtype=tf.float32)
+
+        def evaluate(query, key, value, alpha, epsilon):
+            with tf.GradientTape() as tape:
+                tape.watch((query, key, value, alpha, epsilon))
+                weights = yat_attention_weights(
+                    query, key, mask=mask, epsilon=epsilon, alpha=alpha
+                )
+                output = yat_attention(
+                    query, key, value, mask=mask, epsilon=epsilon, alpha=alpha
+                )
+                loss = tf.reduce_sum(output * cotangent)
+            gradients = tape.gradient(loss, (query, key, value, alpha, epsilon))
+            return weights, output, gradients
+
+        function = tf.function(evaluate) if compiled else evaluate
+        operands = (
+            tf.convert_to_tensor(case.query, dtype=tf.float32),
+            tf.convert_to_tensor(case.key, dtype=tf.float32),
+            tf.convert_to_tensor(case.value, dtype=tf.float32),
+            tf.convert_to_tensor(case.alpha, dtype=tf.float32),
+            tf.convert_to_tensor(case.epsilon, dtype=tf.float32),
+        )
+        weights, output, values = function(*operands)
+        gradients = dict(zip(("query", "key", "value", "alpha", "epsilon"), values))
+        return AttentionResult(
+            np.asarray(weights),
+            np.asarray(output),
+            {name: np.asarray(item) for name, item in gradients.items()},
         )

@@ -5,7 +5,12 @@ from __future__ import annotations
 import numpy as np
 
 from tests._isolated_backend import mlx_is_usable
-from tests.conformance.oracle import DenseCase, OracleResult
+from tests.conformance.oracle import (
+    AttentionCase,
+    AttentionResult,
+    DenseCase,
+    OracleResult,
+)
 
 
 class MlxAdapter:
@@ -80,4 +85,46 @@ class MlxAdapter:
         return OracleResult(
             np.asarray(output),
             {name: np.asarray(value) for name, value in gradients.items()},
+        )
+
+    @staticmethod
+    def attention_value_and_grad(
+        case: AttentionCase, *, compiled: bool = False
+    ) -> AttentionResult:
+        import mlx.core as mx
+
+        from nmn.mlx import yat_attention, yat_attention_weights
+
+        mask = mx.array(case.mask, dtype=mx.bool_)
+        cotangent = mx.array(case.cotangent, dtype=mx.float32)
+
+        def loss(query, key, value, alpha, epsilon):
+            weights = yat_attention_weights(
+                query, key, mask=mask, epsilon=epsilon, alpha=alpha
+            )
+            output = yat_attention(
+                query, key, value, mask=mask, epsilon=epsilon, alpha=alpha
+            )
+            return mx.sum(output * cotangent), (weights, output)
+
+        function = mx.value_and_grad(loss, argnums=(0, 1, 2, 3, 4), has_aux=True)
+        if compiled:
+            function = mx.compile(function)
+        operands = tuple(
+            mx.array(value, dtype=mx.float32)
+            for value in (
+                case.query,
+                case.key,
+                case.value,
+                case.alpha,
+                case.epsilon,
+            )
+        )
+        (_, (weights, output)), values = function(*operands)
+        gradients = dict(zip(("query", "key", "value", "alpha", "epsilon"), values))
+        mx.eval(weights, output, gradients)
+        return AttentionResult(
+            np.asarray(weights),
+            np.asarray(output),
+            {name: np.asarray(item) for name, item in gradients.items()},
         )

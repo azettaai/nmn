@@ -49,7 +49,13 @@ def test_dense_forward_matches_float64_oracle(backend_name, backend, mode):
         expected = yat_dense(case)
     actual = adapter.dense(case, compiled=mode != "eager")
     tolerance = CONTRACT["tolerances"]["float32"]
-    compare(backend_name, actual, expected.output, **tolerance)
+    compare(
+        backend_name,
+        actual,
+        expected.output,
+        expected_dtype="float32",
+        **tolerance,
+    )
 
 
 @pytest.mark.parametrize("backend_name,backend,mode", list(_cases()))
@@ -72,13 +78,20 @@ def test_dense_output_and_all_gradients_match_float64_oracle(
         expected = yat_dense(case)
     actual = adapter.dense_value_and_grad(case, compiled=mode != "eager")
     tolerance = CONTRACT["tolerances"]["float32"]
-    compare(backend_name, actual.output, expected.output, **tolerance)
+    compare(
+        backend_name,
+        actual.output,
+        expected.output,
+        expected_dtype="float32",
+        **tolerance,
+    )
     assert set(actual.gradients) == set(expected.gradients)
     for name, expected_gradient in expected.gradients.items():
         compare(
             f"{backend_name}:{name}",
             actual.gradients[name],
             expected_gradient,
+            expected_dtype="float32",
             **tolerance,
         )
 

@@ -7,9 +7,11 @@ from dataclasses import replace
 import numpy as np
 
 from tests.conformance.oracle import (
+    canonical_attention_case,
     canonical_dense_case,
     read_dense_fixture,
     write_dense_fixture,
+    yat_attention,
     yat_dense,
 )
 
@@ -50,3 +52,12 @@ def test_canonical_fixture_round_trip_is_pickle_free(tmp_path):
         np.testing.assert_array_equal(
             stored.gradients[name], regenerated.gradients[name]
         )
+
+
+def test_attention_oracle_mask_simplex_all_masked_and_gradients():
+    result = yat_attention(canonical_attention_case())
+    np.testing.assert_allclose(result.weights[0, 0, 0].sum(), 1.0)
+    np.testing.assert_array_equal(result.weights[0, 0, 1], 0.0)
+    np.testing.assert_array_equal(result.output[0, 1], 0.0)
+    assert set(result.gradients) == {"query", "key", "value", "alpha", "epsilon"}
+    assert all(np.isfinite(value).all() for value in result.gradients.values())

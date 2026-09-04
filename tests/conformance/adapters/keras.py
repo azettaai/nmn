@@ -6,7 +6,12 @@ import importlib.util
 
 import numpy as np
 
-from tests.conformance.oracle import DenseCase, OracleResult
+from tests.conformance.oracle import (
+    AttentionCase,
+    AttentionResult,
+    DenseCase,
+    OracleResult,
+)
 
 
 class KerasAdapter:
@@ -36,10 +41,10 @@ class KerasAdapter:
         if importlib.util.find_spec("keras") is None:
             return False
         try:
-            import keras  # noqa: F401
+            import keras
         except (ImportError, ModuleNotFoundError):
             return False
-        return True
+        return keras.backend.backend() == "tensorflow"
 
     @staticmethod
     def dense(case: DenseCase, *, compiled: bool = False) -> np.ndarray:
@@ -95,4 +100,51 @@ class KerasAdapter:
         return OracleResult(
             np.asarray(output),
             {name: np.asarray(value) for name, value in gradients.items()},
+        )
+
+    @staticmethod
+    def attention_value_and_grad(
+        case: AttentionCase, *, compiled: bool = False
+    ) -> AttentionResult:
+        import keras
+
+        if keras.backend.backend() != "tensorflow":
+            raise RuntimeError("Keras conformance gradients require TensorFlow backend")
+        import tensorflow as tf
+
+        from nmn.keras import yat_attention, yat_attention_weights
+
+        mask = tf.convert_to_tensor(case.mask, dtype=tf.bool)
+        cotangent = tf.convert_to_tensor(case.cotangent, dtype=tf.float32)
+
+        def evaluate(query, key, value, alpha, epsilon):
+            with tf.GradientTape() as tape:
+                tape.watch((query, key, value, alpha, epsilon))
+                weights = yat_attention_weights(
+                    query, key, mask=mask, epsilon=epsilon, alpha=alpha
+                )
+                output = yat_attention(
+                    query, key, value, mask=mask, epsilon=epsilon, alpha=alpha
+                )
+                loss = tf.reduce_sum(output * cotangent)
+            gradients = tape.gradient(loss, (query, key, value, alpha, epsilon))
+            return weights, output, gradients
+
+        function = tf.function(evaluate) if compiled else evaluate
+        operands = tuple(
+            tf.convert_to_tensor(value, dtype=tf.float32)
+            for value in (
+                case.query,
+                case.key,
+                case.value,
+                case.alpha,
+                case.epsilon,
+            )
+        )
+        weights, output, values = function(*operands)
+        gradients = dict(zip(("query", "key", "value", "alpha", "epsilon"), values))
+        return AttentionResult(
+            np.asarray(weights),
+            np.asarray(output),
+            {name: np.asarray(item) for name, item in gradients.items()},
         )

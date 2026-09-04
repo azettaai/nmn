@@ -16,9 +16,12 @@ OPERATIONS = (
     "may",
     "ray",
 )
+DTYPES = ("float64", "float32", "bfloat16", "float16")
 EXECUTION_MODES = {"eager", "compile", "jit", "function", "compiled_call"}
 SUPPORT_STATES = {"supported", "partial", "unsupported"}
 CONFORMANCE_STATES = {"oracle", "fixture", "declared"}
+EVIDENCE_KINDS = CONFORMANCE_STATES
+KERAS_ENGINES = {"not_applicable", "tensorflow", "jax", "torch"}
 
 
 class ContractError(ValueError):
@@ -37,14 +40,153 @@ def load_contract() -> dict[str, Any]:
     return contract
 
 
+def _mapping(value: Any, path: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ContractError(f"{path} must be an object")
+    return value
+
+
 def _require_keys(value: Mapping[str, Any], keys: set[str], path: str) -> None:
     missing = sorted(keys - value.keys())
     if missing:
         raise ContractError(f"{path} is missing required keys: {', '.join(missing)}")
 
 
+def _string(value: Any, path: str, *, nonempty: bool = True) -> str:
+    if not isinstance(value, str) or (nonempty and not value):
+        raise ContractError(f"{path} must be a nonempty string")
+    return value
+
+
+def _boolean(value: Any, path: str) -> bool:
+    if not isinstance(value, bool):
+        raise ContractError(f"{path} must be a boolean")
+    return value
+
+
+def _string_list(value: Any, path: str, *, nonempty: bool = False) -> list[str]:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item for item in value
+    ):
+        raise ContractError(f"{path} must be a list of nonempty strings")
+    if nonempty and not value:
+        raise ContractError(f"{path} must not be empty")
+    if len(value) != len(set(value)):
+        raise ContractError(f"{path} must not contain duplicates")
+    return value
+
+
+def _subset(values: list[str], allowed: list[str] | set[str], path: str) -> None:
+    unknown = set(values) - set(allowed)
+    if unknown:
+        raise ContractError(f"{path} has unsupported values: {sorted(unknown)}")
+
+
+def _validate_coverage(
+    value: Any, path: str, allowed: list[str]
+) -> tuple[list[str], list[str]]:
+    coverage = _mapping(value, path)
+    _require_keys(coverage, {"supported", "tested"}, path)
+    supported = _string_list(coverage["supported"], f"{path}.supported")
+    tested = _string_list(coverage["tested"], f"{path}.tested")
+    _subset(supported, allowed, f"{path}.supported")
+    _subset(tested, supported, f"{path}.tested")
+    return supported, tested
+
+
+def _validate_profile(
+    profile: Any,
+    *,
+    path: str,
+    backend_name: str,
+    backend: Mapping[str, Any],
+    operation: Mapping[str, Any],
+    capability: Mapping[str, Any],
+) -> None:
+    profile = _mapping(profile, path)
+    _require_keys(
+        profile,
+        {
+            "dtypes",
+            "modes",
+            "keras_engine",
+            "config",
+            "layout",
+            "masking",
+            "serialization",
+            "evidence",
+        },
+        path,
+    )
+    supported_dtypes, tested_dtypes = _validate_coverage(
+        profile["dtypes"], f"{path}.dtypes", backend["dtypes"]
+    )
+    supported_modes, tested_modes = _validate_coverage(
+        profile["modes"], f"{path}.modes", backend["execution"]
+    )
+    keras_engine = _string(profile["keras_engine"], f"{path}.keras_engine")
+    if keras_engine not in KERAS_ENGINES:
+        raise ContractError(f"{path}.keras_engine is invalid")
+    expected_engine = "tensorflow" if backend_name == "keras" else "not_applicable"
+    if keras_engine != expected_engine:
+        raise ContractError(f"{path}.keras_engine must be {expected_engine!r}")
+    config = _mapping(profile["config"], f"{path}.config")
+    if not config:
+        raise ContractError(f"{path}.config must not be empty")
+    _string(profile["layout"], f"{path}.layout")
+    masking = _string_list(profile["masking"], f"{path}.masking")
+    _subset(masking, backend["masking"][operation["mask_key"]], f"{path}.masking")
+    serialization = _string_list(
+        profile["serialization"], f"{path}.serialization", nonempty=True
+    )
+    _subset(serialization, backend["serialization"], f"{path}.serialization")
+
+    evidence = _mapping(profile["evidence"], f"{path}.evidence")
+    _require_keys(evidence, {"kind", "tests", "fixture"}, f"{path}.evidence")
+    evidence_kind = _string(evidence["kind"], f"{path}.evidence.kind")
+    if evidence_kind not in EVIDENCE_KINDS:
+        raise ContractError(f"{path}.evidence.kind is invalid")
+    tests = _string_list(evidence["tests"], f"{path}.evidence.tests")
+    fixture = evidence["fixture"]
+    if fixture is not None:
+        _string(fixture, f"{path}.evidence.fixture")
+    if evidence_kind != capability["conformance"]:
+        raise ContractError(f"{path}.evidence.kind must match capability conformance")
+    if evidence_kind == "declared":
+        if tested_dtypes or tested_modes or tests or fixture is not None:
+            raise ContractError(
+                f"{path}.declared evidence must not claim test coverage"
+            )
+    else:
+        if not tested_dtypes or not tested_modes or not tests:
+            raise ContractError(
+                f"{path}.verified evidence must name tested dtypes, modes, and tests"
+            )
+        if evidence_kind == "fixture" and fixture is None:
+            raise ContractError(f"{path}.fixture evidence must name a fixture")
+        if evidence_kind == "oracle" and fixture is not None:
+            raise ContractError(f"{path}.oracle evidence must not name a fixture")
+    if capability["status"] == "unsupported":
+        if (
+            supported_dtypes
+            or supported_modes
+            or tested_dtypes
+            or tested_modes
+            or tests
+        ):
+            raise ContractError(
+                f"{path}.unsupported capability must not claim support or tests"
+            )
+
+
 def validate_contract(contract: Mapping[str, Any]) -> None:
-    """Validate a manifest without importing optional backend dependencies."""
+    """Validate a manifest without importing optional backend dependencies.
+
+    The validator deliberately rejects malformed and internally inconsistent
+    contracts.  A declared API is not evidence: only ``oracle`` or ``fixture``
+    cells may list tests, tested dtypes, or tested execution modes.
+    """
+    contract = _mapping(contract, "contract")
     _require_keys(
         contract,
         {
@@ -54,40 +196,77 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
             "tolerances",
             "operations",
             "backends",
+            "profiles",
         },
         "contract",
     )
     if contract["schema_version"] != 1:
         raise ContractError("contract.schema_version must be 1")
+    _string(contract["contract_version"], "contract.contract_version")
+    canonical = _mapping(contract["canonical"], "contract.canonical")
+    _require_keys(
+        canonical,
+        {
+            "array_format",
+            "oracle_dtype",
+            "kernel_layout",
+            "fixture_format",
+            "random_seed",
+        },
+        "contract.canonical",
+    )
+    for key in ("array_format", "oracle_dtype", "kernel_layout", "fixture_format"):
+        _string(canonical[key], f"contract.canonical.{key}")
+    if not isinstance(canonical["random_seed"], int) or isinstance(
+        canonical["random_seed"], bool
+    ):
+        raise ContractError("contract.canonical.random_seed must be an integer")
 
-    operations = contract["operations"]
-    backends = contract["backends"]
+    tolerances = _mapping(contract["tolerances"], "contract.tolerances")
+    if tuple(tolerances) != DTYPES:
+        raise ContractError(f"contract.tolerances must be exactly {DTYPES!r}")
+    for dtype in DTYPES:
+        tolerance = _mapping(tolerances[dtype], f"contract.tolerances.{dtype}")
+        _require_keys(tolerance, {"rtol", "atol"}, f"contract.tolerances.{dtype}")
+        for key in ("rtol", "atol"):
+            value = tolerance[key]
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or value < 0
+            ):
+                raise ContractError(
+                    f"contract.tolerances.{dtype}.{key} must be nonnegative"
+                )
+
+    operations = _mapping(contract["operations"], "contract.operations")
+    backends = _mapping(contract["backends"], "contract.backends")
+    profiles = _mapping(contract["profiles"], "contract.profiles")
     if tuple(operations) != OPERATIONS:
         raise ContractError(f"contract.operations must be exactly {OPERATIONS!r}")
     if tuple(backends) != BACKENDS:
         raise ContractError(f"contract.backends must be exactly {BACKENDS!r}")
+    if tuple(profiles) != BACKENDS:
+        raise ContractError(f"contract.profiles must be exactly {BACKENDS!r}")
 
-    for dtype in ("float64", "float32", "bfloat16", "float16"):
-        tolerance = contract["tolerances"].get(dtype)
-        if not isinstance(tolerance, Mapping):
-            raise ContractError(f"contract.tolerances.{dtype} must be an object")
-        _require_keys(tolerance, {"rtol", "atol"}, f"contract.tolerances.{dtype}")
-        if tolerance["rtol"] < 0 or tolerance["atol"] < 0:
-            raise ContractError(f"contract.tolerances.{dtype} must be nonnegative")
-
-    for operation_name, operation in operations.items():
+    for operation_name, operation_value in operations.items():
+        operation = _mapping(operation_value, f"contract.operations.{operation_name}")
+        operation_path = f"contract.operations.{operation_name}"
         _require_keys(
             operation,
-            {"oracle", "outputs", "gradients", "masking", "layout"},
-            f"contract.operations.{operation_name}",
+            {"oracle", "outputs", "gradients", "masking", "layout", "mask_key"},
+            operation_path,
         )
-        if not operation["outputs"]:
-            raise ContractError(
-                f"contract.operations.{operation_name}.outputs is empty"
-            )
+        _string(operation["oracle"], f"{operation_path}.oracle")
+        _string_list(operation["outputs"], f"{operation_path}.outputs", nonempty=True)
+        _string_list(operation["gradients"], f"{operation_path}.gradients")
+        _string_list(operation["masking"], f"{operation_path}.masking")
+        _string(operation["layout"], f"{operation_path}.layout")
+        _string(operation["mask_key"], f"{operation_path}.mask_key")
 
-    for backend_name, backend in backends.items():
+    for backend_name, backend_value in backends.items():
         path = f"contract.backends.{backend_name}"
+        backend = _mapping(backend_value, path)
         _require_keys(
             backend,
             {
@@ -104,43 +283,80 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
             },
             path,
         )
-        unknown_modes = set(backend["execution"]) - EXECUTION_MODES
-        if unknown_modes:
+        for key in ("display_name", "adapter", "ci_platform", "native_layout"):
+            _string(backend[key], f"{path}.{key}")
+        _boolean(backend["required_in_ci"], f"{path}.required_in_ci")
+        execution = _string_list(
+            backend["execution"], f"{path}.execution", nonempty=True
+        )
+        _subset(execution, EXECUTION_MODES, f"{path}.execution")
+        backend_dtypes = _string_list(
+            backend["dtypes"], f"{path}.dtypes", nonempty=True
+        )
+        _subset(backend_dtypes, DTYPES, f"{path}.dtypes")
+        _string_list(backend["serialization"], f"{path}.serialization", nonempty=True)
+        masking = _mapping(backend["masking"], f"{path}.masking")
+        if set(masking) != {"attention", "may", "ray", "none"}:
             raise ContractError(
-                f"{path}.execution has unknown modes: {sorted(unknown_modes)}"
+                f"{path}.masking must declare attention, may, ray, and none"
             )
-        if set(backend["operations"]) != set(OPERATIONS):
+        for mask_key, modes in masking.items():
+            _string_list(modes, f"{path}.masking.{mask_key}")
+        backend_operations = _mapping(backend["operations"], f"{path}.operations")
+        if set(backend_operations) != set(OPERATIONS):
             raise ContractError(f"{path}.operations must declare every operation")
-        if set(backend["masking"]) != {"attention", "may", "ray"}:
-            raise ContractError(f"{path}.masking must declare attention, may, and ray")
-        for operation_name, capability in backend["operations"].items():
+        backend_profiles = _mapping(
+            profiles[backend_name], f"contract.profiles.{backend_name}"
+        )
+        if set(backend_profiles) != set(OPERATIONS):
+            raise ContractError(
+                f"contract.profiles.{backend_name} must declare every operation"
+            )
+        for operation_name in OPERATIONS:
             capability_path = f"{path}.operations.{operation_name}"
+            capability = _mapping(backend_operations[operation_name], capability_path)
             _require_keys(capability, {"status", "conformance", "api"}, capability_path)
-            if capability["status"] not in SUPPORT_STATES:
+            status = _string(capability["status"], f"{capability_path}.status")
+            conformance = _string(
+                capability["conformance"], f"{capability_path}.conformance"
+            )
+            if status not in SUPPORT_STATES:
                 raise ContractError(f"{capability_path}.status is invalid")
-            if capability["conformance"] not in CONFORMANCE_STATES:
+            if conformance not in CONFORMANCE_STATES:
                 raise ContractError(f"{capability_path}.conformance is invalid")
-            if not isinstance(capability["api"], str):
-                raise ContractError(f"{capability_path}.api must be a string")
-            api_names = capability["api"].split("|")
-            if not api_names or any(
-                not name.startswith(f"nmn.{backend_name}.") for name in api_names
-            ):
+            api_names = _string(capability["api"], f"{capability_path}.api").split("|")
+            if any(not name.startswith(f"nmn.{backend_name}.") for name in api_names):
                 raise ContractError(
-                    f"{capability_path}.api must contain fully qualified "
-                    f"nmn.{backend_name} symbols"
+                    f"{capability_path}.api must contain fully qualified nmn.{backend_name} symbols"
                 )
+            operation = operations[operation_name]
+            if operation["mask_key"] not in masking:
+                raise ContractError(
+                    f"contract.operations.{operation_name}.mask_key is unknown"
+                )
+            _validate_profile(
+                backend_profiles[operation_name],
+                path=f"contract.profiles.{backend_name}.{operation_name}",
+                backend_name=backend_name,
+                backend=backend,
+                operation=operation,
+                capability=capability,
+            )
 
 
 def render_support_markdown(contract: Mapping[str, Any] | None = None) -> str:
     """Render the human support table from the canonical manifest."""
     if contract is None:
         contract = load_contract()
+    validate_contract(contract)
     lines = [
         "<!-- Generated by `python -m nmn.conformance`; do not edit by hand. -->",
         "# Cross-framework conformance contract",
         "",
         f"Contract version: `{contract['contract_version']}`.",
+        "",
+        "A cell is verified only when it names tested dtypes, execution modes, and evidence.",
+        "`declared` means the public API is documented but is not yet conformance-tested.",
         "",
         "| Backend | CI | Execution | Dtypes | Serialization | Linear masks |",
         "| --- | --- | --- | --- | --- | --- |",
@@ -151,8 +367,7 @@ def render_support_markdown(contract: Mapping[str, Any] | None = None) -> str:
             f"| {backend['display_name']} | {backend['ci_platform']} ({required}) | "
             f"{', '.join(backend['execution'])} | {', '.join(backend['dtypes'])} | "
             f"{', '.join(backend['serialization'])} | "
-            f"MAY: {', '.join(backend['masking']['may'])}; "
-            f"RAY: {', '.join(backend['masking']['ray'])} |"
+            f"MAY: {', '.join(backend['masking']['may'])}; RAY: {', '.join(backend['masking']['ray'])} |"
         )
     lines.extend(["", "## Operation coverage", ""])
     headings = [contract["backends"][name]["display_name"] for name in BACKENDS]
@@ -164,7 +379,11 @@ def render_support_markdown(contract: Mapping[str, Any] | None = None) -> str:
             capability = contract["backends"][backend_name]["operations"][
                 operation_name
             ]
-            cells.append(f"{capability['status']} / {capability['conformance']}")
+            profile = contract["profiles"][backend_name][operation_name]
+            tested = ", ".join(profile["dtypes"]["tested"]) or "not tested"
+            cells.append(
+                f"{capability['status']} / {capability['conformance']} ({tested})"
+            )
         lines.append(f"| {operation_name} | " + " | ".join(cells) + " |")
     lines.extend(["", "## Enforced tolerances", ""])
     lines.append("| Dtype | rtol | atol |")

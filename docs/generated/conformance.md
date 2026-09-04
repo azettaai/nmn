@@ -3,6 +3,9 @@
 
 Contract version: `2026.09`.
 
+A cell is verified only when it names tested dtypes, execution modes, and evidence.
+`declared` means the public API is documented but is not yet conformance-tested.
+
 | Backend | CI | Execution | Dtypes | Serialization | Linear masks |
 | --- | --- | --- | --- | --- | --- |
 | PyTorch | linux (required) | eager, compile | float16, bfloat16, float32, float64 | state_dict, pickle | MAY: causal; RAY: causal |
@@ -16,13 +19,13 @@ Contract version: `2026.09`.
 
 | Operation | PyTorch | Flax NNX | Flax Linen | TensorFlow | Keras 3 | MLX |
 | --- | --- | --- | --- | --- | --- | --- |
-| dense | supported / oracle | supported / oracle | supported / oracle | supported / oracle | supported / oracle | supported / fixture |
-| embed | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared |
-| convolution | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared |
-| transpose_convolution | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared | partial / declared |
-| attention | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared |
-| may | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared |
-| ray | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared | supported / declared |
+| dense | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / fixture (float32) |
+| embed | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
+| convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
+| transpose_convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / declared (not tested) | supported / declared (not tested) | partial / declared (not tested) |
+| attention | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
+| may | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
+| ray | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
 
 ## Enforced tolerances
 

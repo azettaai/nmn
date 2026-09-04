@@ -8,7 +8,12 @@ from typing import Protocol
 
 import numpy as np
 
-from tests.conformance.oracle import DenseCase, OracleResult
+from tests.conformance.oracle import (
+    AttentionCase,
+    AttentionResult,
+    DenseCase,
+    OracleResult,
+)
 
 
 class Adapter(Protocol):
@@ -31,6 +36,13 @@ class Adapter(Protocol):
         """Run dense and differentiate its canonical cotangent projection."""
         ...
 
+    @staticmethod
+    def attention_value_and_grad(
+        case: AttentionCase, *, compiled: bool = False
+    ) -> AttentionResult:
+        """Run masked attention and differentiate its canonical projection."""
+        ...
+
 
 @dataclass(frozen=True)
 class Comparison:
@@ -39,6 +51,7 @@ class Comparison:
     backend: str
     max_absolute_error: float
     max_relative_error: float
+    actual_dtype: str
 
 
 def load_adapter(reference: str) -> type[Adapter]:
@@ -57,11 +70,29 @@ def compare(
     *,
     rtol: float,
     atol: float,
+    expected_dtype: str | None = None,
 ) -> Comparison:
     """Assert parity and return stable error metrics for diagnostics."""
-    actual64 = np.asarray(actual, dtype=np.float64)
-    expected64 = np.asarray(expected, dtype=np.float64)
+    actual_array = np.asarray(actual)
+    expected_array = np.asarray(expected)
+    if actual_array.shape != expected_array.shape:
+        raise AssertionError(
+            f"{backend} shape mismatch: actual {actual_array.shape}, "
+            f"expected {expected_array.shape}"
+        )
+    if expected_dtype is not None and actual_array.dtype.name != expected_dtype:
+        raise AssertionError(
+            f"{backend} dtype mismatch: actual {actual_array.dtype.name}, "
+            f"expected {expected_dtype}"
+        )
+    actual64 = actual_array.astype(np.float64, copy=False)
+    expected64 = expected_array.astype(np.float64, copy=False)
     np.testing.assert_allclose(actual64, expected64, rtol=rtol, atol=atol)
     absolute = np.abs(actual64 - expected64)
     relative = absolute / np.maximum(np.abs(expected64), np.finfo(np.float64).tiny)
-    return Comparison(backend, float(np.max(absolute)), float(np.max(relative)))
+    return Comparison(
+        backend,
+        float(np.max(absolute)),
+        float(np.max(relative)),
+        actual_array.dtype.name,
+    )
