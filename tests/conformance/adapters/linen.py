@@ -11,32 +11,42 @@ from tests.conformance.oracle import (
     AttentionResult,
     ConvolutionCase,
     DenseCase,
+    DenseConfiguration,
     EmbeddingAttendCase,
     EmbeddingCase,
+    LinearAttentionCase,
+    LinearAttentionResult,
     OracleResult,
 )
 
 
 class LinenAdapter:
     @staticmethod
-    def _layer_and_params(case: DenseCase):
+    def _layer_and_params(
+        case: DenseCase, configuration: DenseConfiguration | None = None
+    ):
         import jax
         import jax.numpy as jnp
 
         from nmn.linen import YatNMN
 
+        configuration = configuration or DenseConfiguration()
         layer = YatNMN(
             features=case.kernel.shape[1],
-            use_bias=True,
+            use_bias=configuration.use_bias,
+            constant_bias=configuration.constant_bias,
             use_alpha=True,
+            spherical=configuration.spherical,
+            weight_normalized=configuration.weight_normalized,
             epsilon=float(case.epsilon),
-            learnable_epsilon=True,
+            learnable_epsilon=configuration.learnable_epsilon,
             param_dtype=jnp.float32,
         )
         inputs = jnp.asarray(case.inputs, dtype=jnp.float32)
         params = dict(layer.init(jax.random.key(0), inputs)["params"])
         params["kernel"] = jnp.asarray(case.kernel.T, dtype=jnp.float32)
-        params["bias"] = jnp.asarray(case.bias, dtype=jnp.float32)
+        if configuration.bias_mode == "learnable":
+            params["bias"] = jnp.asarray(case.bias, dtype=jnp.float32)
         params["alpha"] = jnp.asarray([float(case.alpha)], dtype=jnp.float32)
         return layer, params
 
@@ -45,11 +55,16 @@ class LinenAdapter:
         return importlib.util.find_spec("flax") is not None
 
     @staticmethod
-    def dense(case: DenseCase, *, compiled: bool = False) -> np.ndarray:
+    def dense(
+        case: DenseCase,
+        *,
+        compiled: bool = False,
+        configuration: DenseConfiguration | None = None,
+    ) -> np.ndarray:
         import jax
         import jax.numpy as jnp
 
-        layer, params = LinenAdapter._layer_and_params(case)
+        layer, params = LinenAdapter._layer_and_params(case, configuration)
         inputs = jnp.asarray(case.inputs, dtype=jnp.float32)
 
         def function(value):
@@ -250,4 +265,67 @@ class LinenAdapter:
             np.asarray(weights),
             np.asarray(output),
             {name: np.asarray(item) for name, item in gradients.items()},
+        )
+
+    @staticmethod
+    def linear_attention_value_and_grad(
+        case: LinearAttentionCase, *, compiled: bool = False
+    ) -> LinearAttentionResult:
+        import jax
+        import jax.numpy as jnp
+
+        from nmn.linen import (
+            maclaurin_features,
+            maclaurin_yat_attention,
+            radial_features,
+            radial_yat_attention,
+        )
+
+        if case.key_padding_mask is not None:
+            raise ValueError("Linen MAY/RAY exposes causal masking only")
+        params = {
+            name: (
+                jnp.asarray(value, dtype=jnp.float32)
+                if isinstance(value, np.ndarray)
+                else value
+            )
+            for name, value in case.projection.items()
+        }
+        if case.kind == "may":
+            # Linen predates the cross-backend name ``num_features``.
+            params["M"] = params.pop("num_features")
+            feature_fn, attention_fn = maclaurin_features, maclaurin_yat_attention
+        else:
+            feature_fn, attention_fn = radial_features, radial_yat_attention
+        cotangent = jnp.asarray(case.cotangent, dtype=jnp.float32)
+
+        def loss(query, key, value):
+            query_features = feature_fn(query, params)
+            key_features = feature_fn(key, params)
+            output = attention_fn(
+                query,
+                key,
+                value,
+                params,
+                causal=case.causal,
+                eps_div=float(case.epsilon),
+            )
+            return jnp.sum(output * cotangent), (query_features, key_features, output)
+
+        function = jax.value_and_grad(loss, argnums=(0, 1, 2), has_aux=True)
+        if compiled:
+            function = jax.jit(function)
+        operands = tuple(
+            jnp.asarray(item, dtype=jnp.float32)
+            for item in (case.query, case.key, case.value)
+        )
+        (_, (query_features, key_features, output)), gradients = function(*operands)
+        return LinearAttentionResult(
+            np.asarray(query_features),
+            np.asarray(key_features),
+            np.asarray(output),
+            {
+                name: np.asarray(value)
+                for name, value in zip(("query", "key", "value"), gradients)
+            },
         )

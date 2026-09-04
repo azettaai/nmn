@@ -24,8 +24,8 @@ A cell is verified only when it names tested dtypes, execution modes, and eviden
 | convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
 | transpose_convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | partial / oracle (float32) |
 | attention | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
-| may | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
-| ray | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
+| may | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
+| ray | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
 
 ## Enforced tolerances
 

@@ -11,32 +11,40 @@ from tests.conformance.oracle import (
     AttentionResult,
     ConvolutionCase,
     DenseCase,
+    DenseConfiguration,
     EmbeddingAttendCase,
     EmbeddingCase,
+    LinearAttentionCase,
+    LinearAttentionResult,
     OracleResult,
 )
 
 
 class NnxAdapter:
     @staticmethod
-    def _layer(case: DenseCase):
+    def _layer(case: DenseCase, configuration: DenseConfiguration | None = None):
         import jax.numpy as jnp
         from flax import nnx
 
         from nmn.nnx import YatNMN
 
+        configuration = configuration or DenseConfiguration()
         layer = YatNMN(
             case.kernel.shape[0],
             case.kernel.shape[1],
-            use_bias=True,
+            use_bias=configuration.use_bias,
+            constant_bias=configuration.constant_bias,
             use_alpha=True,
+            spherical=configuration.spherical,
+            weight_normalized=configuration.weight_normalized,
             epsilon=float(case.epsilon),
-            learnable_epsilon=True,
+            learnable_epsilon=configuration.learnable_epsilon,
             param_dtype=jnp.float32,
             rngs=nnx.Rngs(0),
         )
         layer.kernel[...] = jnp.asarray(case.kernel, dtype=jnp.float32)
-        layer.bias[...] = jnp.asarray(case.bias, dtype=jnp.float32)
+        if configuration.bias_mode == "learnable":
+            layer.bias[...] = jnp.asarray(case.bias, dtype=jnp.float32)
         layer.alpha[...] = jnp.asarray([float(case.alpha)], dtype=jnp.float32)
         return layer
 
@@ -45,11 +53,16 @@ class NnxAdapter:
         return importlib.util.find_spec("flax") is not None
 
     @staticmethod
-    def dense(case: DenseCase, *, compiled: bool = False) -> np.ndarray:
+    def dense(
+        case: DenseCase,
+        *,
+        compiled: bool = False,
+        configuration: DenseConfiguration | None = None,
+    ) -> np.ndarray:
         import jax
         import jax.numpy as jnp
 
-        layer = NnxAdapter._layer(case)
+        layer = NnxAdapter._layer(case, configuration)
         function = jax.jit(layer) if compiled else layer
         return np.asarray(function(jnp.asarray(case.inputs, dtype=jnp.float32)))
 
@@ -256,4 +269,70 @@ class NnxAdapter:
             np.asarray(weights),
             np.asarray(output),
             {name: np.asarray(item) for name, item in gradients.items()},
+        )
+
+    @staticmethod
+    def linear_attention_value_and_grad(
+        case: LinearAttentionCase, *, compiled: bool = False
+    ) -> LinearAttentionResult:
+        import jax
+        import jax.numpy as jnp
+
+        from nmn.nnx import (
+            maclaurin_features,
+            maclaurin_yat_attention,
+            radial_features,
+            radial_yat_attention,
+        )
+
+        params = {
+            name: (
+                jnp.asarray(value, dtype=jnp.float32)
+                if isinstance(value, np.ndarray)
+                else value
+            )
+            for name, value in case.projection.items()
+        }
+        feature_fn, attention_fn = (
+            (maclaurin_features, maclaurin_yat_attention)
+            if case.kind == "may"
+            else (radial_features, radial_yat_attention)
+        )
+        mask = (
+            None
+            if case.key_padding_mask is None
+            else jnp.asarray(case.key_padding_mask, dtype=bool)
+        )
+        cotangent = jnp.asarray(case.cotangent, dtype=jnp.float32)
+
+        def loss(query, key, value):
+            query_features = feature_fn(query, params)
+            key_features = feature_fn(key, params)
+            output = attention_fn(
+                query,
+                key,
+                value,
+                params,
+                causal=case.causal,
+                epsilon=float(case.epsilon),
+                mask=mask,
+            )
+            return jnp.sum(output * cotangent), (query_features, key_features, output)
+
+        function = jax.value_and_grad(loss, argnums=(0, 1, 2), has_aux=True)
+        if compiled:
+            function = jax.jit(function)
+        operands = tuple(
+            jnp.asarray(item, dtype=jnp.float32)
+            for item in (case.query, case.key, case.value)
+        )
+        (_, (query_features, key_features, output)), gradients = function(*operands)
+        return LinearAttentionResult(
+            np.asarray(query_features),
+            np.asarray(key_features),
+            np.asarray(output),
+            {
+                name: np.asarray(value)
+                for name, value in zip(("query", "key", "value"), gradients)
+            },
         )

@@ -10,30 +10,38 @@ from tests.conformance.oracle import (
     AttentionResult,
     ConvolutionCase,
     DenseCase,
+    DenseConfiguration,
     EmbeddingAttendCase,
     EmbeddingCase,
+    LinearAttentionCase,
+    LinearAttentionResult,
     OracleResult,
 )
 
 
 class MlxAdapter:
     @staticmethod
-    def _layer(case: DenseCase):
+    def _layer(case: DenseCase, configuration: DenseConfiguration | None = None):
         import mlx.core as mx
 
         from nmn.mlx import YatNMN
 
+        configuration = configuration or DenseConfiguration()
         layer = YatNMN(
             features=case.kernel.shape[1],
-            use_bias=True,
+            use_bias=configuration.use_bias,
+            constant_bias=configuration.constant_bias,
             use_alpha=True,
+            spherical=configuration.spherical,
+            weight_normalized=configuration.weight_normalized,
             epsilon=float(case.epsilon),
-            learnable_epsilon=True,
+            learnable_epsilon=configuration.learnable_epsilon,
             param_dtype=mx.float32,
         )
         layer.build(case.kernel.shape[0])
         layer.kernel = mx.array(case.kernel.T, dtype=mx.float32)
-        layer.bias = mx.array(case.bias, dtype=mx.float32)
+        if configuration.bias_mode == "learnable":
+            layer.bias = mx.array(case.bias, dtype=mx.float32)
         layer.alpha = mx.array([float(case.alpha)], dtype=mx.float32)
         return layer
 
@@ -42,10 +50,15 @@ class MlxAdapter:
         return mlx_is_usable()
 
     @staticmethod
-    def dense(case: DenseCase, *, compiled: bool = False) -> np.ndarray:
+    def dense(
+        case: DenseCase,
+        *,
+        compiled: bool = False,
+        configuration: DenseConfiguration | None = None,
+    ) -> np.ndarray:
         import mlx.core as mx
 
-        layer = MlxAdapter._layer(case)
+        layer = MlxAdapter._layer(case, configuration)
         function = mx.compile(layer, inputs=layer.state) if compiled else layer
         output = function(mx.array(case.inputs, dtype=mx.float32))
         mx.eval(output)
@@ -261,4 +274,66 @@ class MlxAdapter:
             np.asarray(weights),
             np.asarray(output),
             {name: np.asarray(item) for name, item in gradients.items()},
+        )
+
+    @staticmethod
+    def linear_attention_value_and_grad(
+        case: LinearAttentionCase, *, compiled: bool = False
+    ) -> LinearAttentionResult:
+        import mlx.core as mx
+
+        from nmn.mlx import (
+            maclaurin_features,
+            maclaurin_yat_attention,
+            radial_features,
+            radial_yat_attention,
+        )
+
+        if case.key_padding_mask is not None:
+            raise ValueError("MLX MAY/RAY exposes causal masking only")
+        params = {
+            name: (
+                mx.array(value, dtype=mx.float32)
+                if isinstance(value, np.ndarray)
+                else value
+            )
+            for name, value in case.projection.items()
+        }
+        feature_fn, attention_fn = (
+            (maclaurin_features, maclaurin_yat_attention)
+            if case.kind == "may"
+            else (radial_features, radial_yat_attention)
+        )
+        cotangent = mx.array(case.cotangent, dtype=mx.float32)
+
+        def loss(query, key, value):
+            query_features = feature_fn(query, params)
+            key_features = feature_fn(key, params)
+            output = attention_fn(
+                query,
+                key,
+                value,
+                params,
+                causal=case.causal,
+                epsilon=float(case.epsilon),
+            )
+            return mx.sum(output * cotangent), (query_features, key_features, output)
+
+        function = mx.value_and_grad(loss, argnums=(0, 1, 2), has_aux=True)
+        if compiled:
+            function = mx.compile(function)
+        operands = tuple(
+            mx.array(item, dtype=mx.float32)
+            for item in (case.query, case.key, case.value)
+        )
+        (_, (query_features, key_features, output)), gradients = function(*operands)
+        mx.eval(query_features, key_features, output, gradients)
+        return LinearAttentionResult(
+            np.asarray(query_features),
+            np.asarray(key_features),
+            np.asarray(output),
+            {
+                name: np.asarray(value)
+                for name, value in zip(("query", "key", "value"), gradients)
+            },
         )

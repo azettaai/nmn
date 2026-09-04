@@ -58,7 +58,7 @@
     "may": {
       "oracle": "maclaurin_yat_attention_v1",
       "outputs": ["features", "output"],
-      "gradients": ["query", "key", "value", "projection", "bias", "epsilon"],
+      "gradients": ["query", "key", "value"],
       "masking": ["causal", "key_padding"],
       "mask_key": "may",
       "layout": "[batch, sequence, heads, head_features]"
@@ -66,7 +66,7 @@
     "ray": {
       "oracle": "radial_yat_attention_v1",
       "outputs": ["features", "output"],
-      "gradients": ["query", "key", "value", "projection", "bias", "epsilon"],
+      "gradients": ["query", "key", "value"],
       "masking": ["causal", "key_padding"],
       "mask_key": "ray",
       "layout": "[batch, sequence, heads, head_features]"
@@ -279,19 +279,19 @@
         "may": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compile"
             ],
-            "tested": []
+            "tested": ["eager", "compile"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -299,7 +299,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -310,27 +317,27 @@
             "pickle"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         },
         "ray": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compile"
             ],
-            "tested": []
+            "tested": ["eager", "compile"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -338,7 +345,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -349,8 +363,8 @@
             "pickle"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         }
@@ -561,19 +575,19 @@
         "may": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "jit"
             ],
-            "tested": []
+            "tested": ["eager", "jit"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -581,7 +595,15 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "key_padding_executed": true,
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -593,27 +615,27 @@
             "msgpack"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         },
         "ray": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "jit"
             ],
-            "tested": []
+            "tested": ["eager", "jit"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -621,7 +643,15 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "key_padding_executed": true,
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -633,8 +663,8 @@
             "msgpack"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         }
@@ -845,19 +875,19 @@
         "may": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "jit"
             ],
-            "tested": []
+            "tested": ["eager", "jit"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -865,7 +895,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -876,27 +913,27 @@
             "msgpack"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         },
         "ray": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "jit"
             ],
-            "tested": []
+            "tested": ["eager", "jit"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -904,7 +941,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -915,8 +959,8 @@
             "msgpack"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         }
@@ -1127,19 +1171,19 @@
         "may": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "function"
             ],
-            "tested": []
+            "tested": ["eager", "function"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -1147,7 +1191,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -1158,27 +1209,27 @@
             "saved_model"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         },
         "ray": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "function"
             ],
-            "tested": []
+            "tested": ["eager", "function"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -1186,7 +1237,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -1197,8 +1255,8 @@
             "saved_model"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         }
@@ -1409,19 +1467,19 @@
         "may": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compiled_call"
             ],
-            "tested": []
+            "tested": ["eager", "compiled_call"]
           },
           "keras_engine": "tensorflow",
           "config": {
@@ -1429,7 +1487,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -1440,27 +1505,27 @@
             "weights"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         },
         "ray": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32",
-              "float64"
+             "float16",
+             "bfloat16",
+             "float32",
+             "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compiled_call"
             ],
-            "tested": []
+            "tested": ["eager", "compiled_call"]
           },
           "keras_engine": "tensorflow",
           "config": {
@@ -1468,7 +1533,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -1479,8 +1551,8 @@
             "weights"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         }
@@ -1686,18 +1758,18 @@
         "may": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32"
+             "float16",
+             "bfloat16",
+             "float32"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compile"
             ],
-            "tested": []
+            "tested": ["eager", "compile"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -1705,7 +1777,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -1716,26 +1795,26 @@
             "npz"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         },
         "ray": {
           "dtypes": {
             "supported": [
-              "float16",
-              "bfloat16",
-              "float32"
+             "float16",
+             "bfloat16",
+             "float32"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compile"
             ],
-            "tested": []
+            "tested": ["eager", "compile"]
           },
           "keras_engine": "not_applicable",
           "config": {
@@ -1743,7 +1822,14 @@
             "num_heads": 2,
             "head_features": 2,
             "num_features": 8,
-            "causal": true
+            "causal": true,
+            "fixed_projection_fixture": "linear_attention_v1",
+            "gradient_scope": ["query", "key", "value"],
+            "denominator_profile": "positive",
+            "semantic_limitations": [
+              "fixed canonical projection; q/k/v gradients only",
+              "epsilon VJP excluded because TensorFlow epsilon also controls feature normalization and NNX sign-stabilizes the denominator"
+            ]
           },
           "layout": "[batch, sequence, heads, head_features]",
           "masking": [
@@ -1754,8 +1840,8 @@
             "npz"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_linear_attention_parity.py"],
             "fixture": null
           }
         }
@@ -1778,8 +1864,8 @@
         "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatConv1D|nmn.torch.YatConv2D|nmn.torch.YatConv3D"},
         "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatConvTranspose1D|nmn.torch.YatConvTranspose2D|nmn.torch.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.MultiHeadYatAttention"},
-        "may": {"status": "supported", "conformance": "declared", "api": "nmn.torch.maclaurin_yat_attention"},
-        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.torch.radial_yat_attention"}
+        "may": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.radial_yat_attention"}
       }
     },
     "nnx": {
@@ -1798,8 +1884,8 @@
         "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatConv"},
         "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatConvTranspose"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.MultiHeadAttention"},
-        "may": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.maclaurin_yat_attention"},
-        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.nnx.radial_yat_attention"}
+        "may": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.radial_yat_attention"}
       }
     },
     "linen": {
@@ -1818,8 +1904,8 @@
         "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatConv1D|nmn.linen.YatConv2D|nmn.linen.YatConv3D"},
         "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatConvTranspose1D|nmn.linen.YatConvTranspose2D|nmn.linen.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.MultiHeadAttention"},
-        "may": {"status": "supported", "conformance": "declared", "api": "nmn.linen.maclaurin_yat_attention"},
-        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.linen.radial_yat_attention"}
+        "may": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.radial_yat_attention"}
       }
     },
     "tf": {
@@ -1838,8 +1924,8 @@
         "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConv1D|nmn.tf.YatConv2D|nmn.tf.YatConv3D"},
         "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConvTranspose1D|nmn.tf.YatConvTranspose2D|nmn.tf.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.MultiHeadYatAttention"},
-        "may": {"status": "supported", "conformance": "declared", "api": "nmn.tf.maclaurin_yat_attention"},
-        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.tf.radial_yat_attention"}
+        "may": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.radial_yat_attention"}
       }
     },
     "keras": {
@@ -1858,8 +1944,8 @@
         "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConv1D|nmn.keras.YatConv2D|nmn.keras.YatConv3D"},
         "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConvTranspose1D|nmn.keras.YatConvTranspose2D|nmn.keras.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.MultiHeadYatAttention"},
-        "may": {"status": "supported", "conformance": "declared", "api": "nmn.keras.maclaurin_yat_attention"},
-        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.keras.radial_yat_attention"}
+        "may": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.radial_yat_attention"}
       }
     },
     "mlx": {
@@ -1878,8 +1964,8 @@
         "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.YatConv1D|nmn.mlx.YatConv2D|nmn.mlx.YatConv3D"},
         "transpose_convolution": {"status": "partial", "conformance": "oracle", "api": "nmn.mlx.YatConvTranspose1D|nmn.mlx.YatConvTranspose2D|nmn.mlx.YatConvTranspose3D", "limitations": ["groups=1"]},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.MultiHeadYatAttention"},
-        "may": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.maclaurin_yat_attention"},
-        "ray": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.radial_yat_attention"}
+        "may": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.maclaurin_yat_attention"},
+        "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.radial_yat_attention"}
       }
     }
   }

@@ -11,30 +11,38 @@ from tests.conformance.oracle import (
     AttentionResult,
     ConvolutionCase,
     DenseCase,
+    DenseConfiguration,
     EmbeddingAttendCase,
     EmbeddingCase,
+    LinearAttentionCase,
+    LinearAttentionResult,
     OracleResult,
 )
 
 
 class TensorFlowAdapter:
     @staticmethod
-    def _layer(case: DenseCase):
+    def _layer(case: DenseCase, configuration: DenseConfiguration | None = None):
         import tensorflow as tf
 
         from nmn.tf import YatNMN
 
+        configuration = configuration or DenseConfiguration()
         layer = YatNMN(
             features=case.kernel.shape[1],
-            use_bias=True,
+            use_bias=configuration.use_bias,
+            constant_bias=configuration.constant_bias,
             use_alpha=True,
+            spherical=configuration.spherical,
+            weight_normalized=configuration.weight_normalized,
             epsilon=float(case.epsilon),
-            learnable_epsilon=True,
+            learnable_epsilon=configuration.learnable_epsilon,
             dtype=tf.float32,
         )
         layer.build(tf.TensorShape(case.inputs.shape))
         layer.kernel.assign(case.kernel.T)
-        layer.bias.assign(case.bias)
+        if configuration.bias_mode == "learnable":
+            layer.bias.assign(case.bias)
         layer.alpha.assign([float(case.alpha)])
         return layer
 
@@ -43,10 +51,15 @@ class TensorFlowAdapter:
         return importlib.util.find_spec("tensorflow") is not None
 
     @staticmethod
-    def dense(case: DenseCase, *, compiled: bool = False) -> np.ndarray:
+    def dense(
+        case: DenseCase,
+        *,
+        compiled: bool = False,
+        configuration: DenseConfiguration | None = None,
+    ) -> np.ndarray:
         import tensorflow as tf
 
-        layer = TensorFlowAdapter._layer(case)
+        layer = TensorFlowAdapter._layer(case, configuration)
         inputs = tf.convert_to_tensor(case.inputs, dtype=tf.float32)
         function = tf.function(layer) if compiled else layer
         return np.asarray(function(inputs))
@@ -236,4 +249,67 @@ class TensorFlowAdapter:
             np.asarray(weights),
             np.asarray(output),
             {name: np.asarray(item) for name, item in gradients.items()},
+        )
+
+    @staticmethod
+    def linear_attention_value_and_grad(
+        case: LinearAttentionCase, *, compiled: bool = False
+    ) -> LinearAttentionResult:
+        import tensorflow as tf
+
+        from nmn.tf import (
+            maclaurin_features,
+            maclaurin_yat_attention,
+            radial_features,
+            radial_yat_attention,
+        )
+
+        if case.key_padding_mask is not None:
+            raise ValueError("TensorFlow MAY/RAY exposes causal masking only")
+        params = {
+            name: (
+                tf.convert_to_tensor(value, dtype=tf.float32)
+                if isinstance(value, np.ndarray)
+                else value
+            )
+            for name, value in case.projection.items()
+        }
+        feature_fn, attention_fn = (
+            (maclaurin_features, maclaurin_yat_attention)
+            if case.kind == "may"
+            else (radial_features, radial_yat_attention)
+        )
+        cotangent = tf.convert_to_tensor(case.cotangent, dtype=tf.float32)
+
+        def evaluate(query, key, value):
+            with tf.GradientTape() as tape:
+                tape.watch((query, key, value))
+                query_features = feature_fn(query, params)
+                key_features = feature_fn(key, params)
+                output = attention_fn(
+                    query,
+                    key,
+                    value,
+                    params,
+                    causal=case.causal,
+                    epsilon=float(case.epsilon),
+                )
+                loss = tf.reduce_sum(output * cotangent)
+            gradients = tape.gradient(loss, (query, key, value))
+            return query_features, key_features, output, gradients
+
+        function = tf.function(evaluate) if compiled else evaluate
+        operands = tuple(
+            tf.convert_to_tensor(item, dtype=tf.float32)
+            for item in (case.query, case.key, case.value)
+        )
+        query_features, key_features, output, gradients = function(*operands)
+        return LinearAttentionResult(
+            np.asarray(query_features),
+            np.asarray(key_features),
+            np.asarray(output),
+            {
+                name: np.asarray(value)
+                for name, value in zip(("query", "key", "value"), gradients)
+            },
         )

@@ -12,6 +12,9 @@ from tests.conformance.oracle import (
     AttentionCase,
     AttentionResult,
     DenseCase,
+    DenseConfiguration,
+    LinearAttentionCase,
+    LinearAttentionResult,
     OracleResult,
 )
 
@@ -25,7 +28,12 @@ class Adapter(Protocol):
         ...
 
     @staticmethod
-    def dense(case: DenseCase, *, compiled: bool = False) -> np.ndarray:
+    def dense(
+        case: DenseCase,
+        *,
+        compiled: bool = False,
+        configuration: DenseConfiguration | None = None,
+    ) -> np.ndarray:
         """Run the canonical dense case."""
         ...
 
@@ -41,6 +49,13 @@ class Adapter(Protocol):
         case: AttentionCase, *, compiled: bool = False
     ) -> AttentionResult:
         """Run masked attention and differentiate its canonical projection."""
+        ...
+
+    @staticmethod
+    def linear_attention_value_and_grad(
+        case: LinearAttentionCase, *, compiled: bool = False
+    ) -> LinearAttentionResult:
+        """Run fixed-projection MAY/RAY and differentiate q/k/v only."""
         ...
 
 

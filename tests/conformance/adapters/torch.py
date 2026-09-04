@@ -11,31 +11,39 @@ from tests.conformance.oracle import (
     AttentionResult,
     ConvolutionCase,
     DenseCase,
+    DenseConfiguration,
     EmbeddingAttendCase,
     EmbeddingCase,
+    LinearAttentionCase,
+    LinearAttentionResult,
     OracleResult,
 )
 
 
 class TorchAdapter:
     @staticmethod
-    def _layer(case: DenseCase):
+    def _layer(case: DenseCase, configuration: DenseConfiguration | None = None):
         import torch
 
         from nmn.torch import YatNMN
 
+        configuration = configuration or DenseConfiguration()
         layer = YatNMN(
             case.kernel.shape[0],
             case.kernel.shape[1],
-            bias=True,
+            bias=configuration.use_bias,
+            constant_bias=configuration.constant_bias,
             alpha=True,
+            spherical=configuration.spherical,
+            weight_normalized=configuration.weight_normalized,
             epsilon=float(case.epsilon),
-            learnable_epsilon=True,
+            learnable_epsilon=configuration.learnable_epsilon,
             param_dtype=torch.float32,
         )
         with torch.no_grad():
             layer.weight.copy_(torch.asarray(case.kernel.T, dtype=torch.float32))
-            layer.bias.copy_(torch.asarray(case.bias, dtype=torch.float32))
+            if configuration.bias_mode == "learnable":
+                layer.bias.copy_(torch.asarray(case.bias, dtype=torch.float32))
             layer.alpha.copy_(torch.asarray([float(case.alpha)], dtype=torch.float32))
         return layer
 
@@ -44,10 +52,15 @@ class TorchAdapter:
         return importlib.util.find_spec("torch") is not None
 
     @staticmethod
-    def dense(case: DenseCase, *, compiled: bool = False) -> np.ndarray:
+    def dense(
+        case: DenseCase,
+        *,
+        compiled: bool = False,
+        configuration: DenseConfiguration | None = None,
+    ) -> np.ndarray:
         import torch
 
-        layer = TorchAdapter._layer(case)
+        layer = TorchAdapter._layer(case, configuration)
         function = torch.compile(layer) if compiled else layer
         with torch.no_grad():
             output = function(torch.asarray(case.inputs, dtype=torch.float32))
@@ -229,4 +242,69 @@ class TorchAdapter:
             weights.detach().cpu().numpy(),
             output.detach().cpu().numpy(),
             {name: item.detach().cpu().numpy() for name, item in gradients.items()},
+        )
+
+    @staticmethod
+    def linear_attention_value_and_grad(
+        case: LinearAttentionCase, *, compiled: bool = False
+    ) -> LinearAttentionResult:
+        """Evaluate the public fixed-kernel MAY/RAY functions, not a module."""
+        import torch
+
+        from nmn.torch import (
+            maclaurin_features,
+            maclaurin_yat_attention,
+            radial_features,
+            radial_yat_attention,
+        )
+
+        if case.key_padding_mask is not None:
+            raise ValueError("Torch MAY/RAY exposes causal masking only")
+        params = {
+            name: (
+                torch.asarray(value, dtype=torch.float32)
+                if isinstance(value, np.ndarray)
+                else value
+            )
+            for name, value in case.projection.items()
+        }
+        if case.kind == "ray":
+            # Torch's first implementation used ``b``; the other backends use
+            # the clearer ``bias`` spelling retained by the canonical fixture.
+            params["b"] = params.pop("bias")
+        feature_fn, attention_fn = (
+            (maclaurin_features, maclaurin_yat_attention)
+            if case.kind == "may"
+            else (radial_features, radial_yat_attention)
+        )
+        cotangent = torch.asarray(case.cotangent, dtype=torch.float32)
+
+        def evaluate(query, key, value):
+            query_features = feature_fn(query, params)
+            key_features = feature_fn(key, params)
+            output = attention_fn(
+                query,
+                key,
+                value,
+                params,
+                causal=case.causal,
+                epsilon=float(case.epsilon),
+            )
+            return query_features, key_features, output
+
+        function = torch.compile(evaluate) if compiled else evaluate
+        query = torch.asarray(case.query, dtype=torch.float32).requires_grad_(True)
+        key = torch.asarray(case.key, dtype=torch.float32).requires_grad_(True)
+        value = torch.asarray(case.value, dtype=torch.float32).requires_grad_(True)
+        query_features, key_features, output = function(query, key, value)
+        torch.sum(output * cotangent).backward()
+        return LinearAttentionResult(
+            query_features.detach().cpu().numpy(),
+            key_features.detach().cpu().numpy(),
+            output.detach().cpu().numpy(),
+            {
+                "query": query.grad.detach().cpu().numpy(),
+                "key": key.grad.detach().cpu().numpy(),
+                "value": value.grad.detach().cpu().numpy(),
+            },
         )
