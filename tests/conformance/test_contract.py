@@ -53,7 +53,7 @@ def test_packaged_contract_is_valid_json_and_complete():
             "config must not be empty",
         ),
         (
-            lambda value: value["profiles"]["tf"]["embed"]["dtypes"].__setitem__(
+            lambda value: value["profiles"]["tf"]["may"]["dtypes"].__setitem__(
                 "tested", ["float32"]
             ),
             "declared evidence must not claim test coverage",

@@ -20,9 +20,9 @@ A cell is verified only when it names tested dtypes, execution modes, and eviden
 | Operation | PyTorch | Flax NNX | Flax Linen | TensorFlow | Keras 3 | MLX |
 | --- | --- | --- | --- | --- | --- | --- |
 | dense | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / fixture (float32) |
-| embed | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
-| convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
-| transpose_convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / declared (not tested) | supported / declared (not tested) | partial / declared (not tested) |
+| embed | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
+| convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
+| transpose_convolution | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | partial / oracle (float32) |
 | attention | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
 | may | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |
 | ray | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) | supported / declared (not tested) |

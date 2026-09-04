@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from nmn.conformance import load_contract
@@ -17,28 +19,65 @@ from tests.conformance.oracle import (
     yat_embedding_attend,
 )
 
-# These are the locally installed frameworks whose native layers are exercised
-# by this compact representative matrix.  Optional backends retain their own
-# backend suites until an adapter is added and executed in their native CI.
-ADAPTERS = {
-    "torch": "tests.conformance.adapters.torch:TorchAdapter",
-    "nnx": "tests.conformance.adapters.nnx:NnxAdapter",
-    "linen": "tests.conformance.adapters.linen:LinenAdapter",
-}
-TOLERANCE = load_contract()["tolerances"]["float32"]
+CONTRACT = load_contract()
+TOLERANCE = CONTRACT["tolerances"]["float32"]
 
 
-@pytest.mark.parametrize("backend,reference", ADAPTERS.items())
-@pytest.mark.parametrize("compiled", [False, True], ids=["eager", "compiled"])
+def _cases(operation):
+    for backend_name, backend in CONTRACT["backends"].items():
+        profile = CONTRACT["profiles"][backend_name][operation]
+        for mode in profile["modes"]["tested"]:
+            yield pytest.param(
+                backend_name,
+                backend,
+                mode,
+                id=f"{backend_name}-{mode}",
+            )
+
+
+def _adapter_or_skip(backend_name, backend):
+    adapter = load_adapter(backend["adapter"])
+    if adapter.available():
+        return adapter
+    platform = os.environ.get("NMN_CONFORMANCE_PLATFORM")
+    if backend["required_in_ci"] and backend["ci_platform"] == platform:
+        pytest.fail(f"required {platform} backend is unavailable: {backend_name}")
+    pytest.skip(f"backend unavailable on this platform: {backend_name}")
+
+
+def _convolution_cases():
+    operations = (
+        ("convolution", False, canonical_convolution_case, yat_conv1d),
+        (
+            "transpose_convolution",
+            True,
+            canonical_transpose_convolution_case,
+            yat_conv_transpose1d,
+        ),
+    )
+    for operation, transpose, case_factory, oracle in operations:
+        for backend_name, backend in CONTRACT["backends"].items():
+            profile = CONTRACT["profiles"][backend_name][operation]
+            for mode in profile["modes"]["tested"]:
+                yield pytest.param(
+                    backend_name,
+                    backend,
+                    mode,
+                    transpose,
+                    case_factory,
+                    oracle,
+                    id=f"{operation}-{backend_name}-{mode}",
+                )
+
+
+@pytest.mark.parametrize("backend,backend_contract,mode", list(_cases("embed")))
 def test_embedding_lookup_and_embedding_gradient_match_float64_oracle(
-    backend, reference, compiled
+    backend, backend_contract, mode
 ):
-    adapter = load_adapter(reference)
-    if not adapter.available():
-        pytest.skip(f"optional backend unavailable: {backend}")
+    adapter = _adapter_or_skip(backend, backend_contract)
     expected = yat_embedding(canonical_embedding_case())
     actual = adapter.embedding_value_and_grad(
-        canonical_embedding_case(), compiled=compiled
+        canonical_embedding_case(), compiled=mode != "eager"
     )
     compare(
         f"{backend}:embedding-output",
@@ -47,19 +86,24 @@ def test_embedding_lookup_and_embedding_gradient_match_float64_oracle(
         expected_dtype="float32",
         **TOLERANCE,
     )
+    assert set(actual.gradients) == {"embedding"}
+    compare(
+        f"{backend}:embedding-gradient",
+        actual.gradients["embedding"],
+        expected.gradients["embedding"],
+        expected_dtype="float32",
+        **TOLERANCE,
+    )
 
 
-@pytest.mark.parametrize("backend,reference", ADAPTERS.items())
-@pytest.mark.parametrize("compiled", [False, True], ids=["eager", "compiled"])
+@pytest.mark.parametrize("backend,backend_contract,mode", list(_cases("embed")))
 def test_embedding_attend_outputs_and_all_supported_gradients_match_float64_oracle(
-    backend, reference, compiled
+    backend, backend_contract, mode
 ):
-    adapter = load_adapter(reference)
-    if not adapter.available():
-        pytest.skip(f"optional backend unavailable: {backend}")
+    adapter = _adapter_or_skip(backend, backend_contract)
     case = canonical_embedding_attend_case()
     expected = yat_embedding_attend(case)
-    actual = adapter.embedding_attend_value_and_grad(case, compiled=compiled)
+    actual = adapter.embedding_attend_value_and_grad(case, compiled=mode != "eager")
     compare(
         f"{backend}:embed-attend-output",
         actual.output,
@@ -85,26 +129,18 @@ def test_embedding_attend_outputs_and_all_supported_gradients_match_float64_orac
     )
 
 
-@pytest.mark.parametrize("backend,reference", ADAPTERS.items())
-@pytest.mark.parametrize("compiled", [False, True], ids=["eager", "compiled"])
 @pytest.mark.parametrize(
-    ("transpose", "case_factory", "oracle"),
-    [
-        (False, canonical_convolution_case, yat_conv1d),
-        (True, canonical_transpose_convolution_case, yat_conv_transpose1d),
-    ],
-    ids=["convolution", "transpose-convolution"],
+    "backend,backend_contract,mode,transpose,case_factory,oracle",
+    list(_convolution_cases()),
 )
 def test_convolution_outputs_and_all_gradients_match_float64_oracle(
-    backend, reference, compiled, transpose, case_factory, oracle
+    backend, backend_contract, mode, transpose, case_factory, oracle
 ):
-    adapter = load_adapter(reference)
-    if not adapter.available():
-        pytest.skip(f"optional backend unavailable: {backend}")
+    adapter = _adapter_or_skip(backend, backend_contract)
     case = case_factory()
     expected = oracle(case)
     actual = adapter.convolution_value_and_grad(
-        case, transpose=transpose, compiled=compiled
+        case, transpose=transpose, compiled=mode != "eager"
     )
     compare(
         f"{backend}:conv-output",

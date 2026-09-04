@@ -974,21 +974,23 @@
               "float32",
               "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "function"
             ],
-            "tested": []
+            "tested": ["eager", "function"]
           },
           "keras_engine": "not_applicable",
           "config": {
-            "case": "embed_v1",
-            "num_embeddings": 7,
-            "features": 4,
-            "query_length": 3
+            "case": "embed_lookup_and_attend_v1",
+            "num_embeddings": 5,
+            "features": 3,
+            "lookup_shape": [2, 2],
+            "query_length": 2,
+            "epsilon": "static"
           },
           "layout": "[vocabulary, features]",
           "masking": [],
@@ -997,8 +999,8 @@
             "saved_model"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1010,23 +1012,25 @@
               "float32",
               "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "function"
             ],
-            "tested": []
+            "tested": ["eager", "function"]
           },
           "keras_engine": "not_applicable",
           "config": {
-            "case": "convolution_v1",
-            "spatial_rank": 2,
+            "case": "convolution_1d_valid_v1",
+            "spatial_rank": 1,
             "input_channels": 2,
-            "output_channels": 3,
-            "kernel_size": 3,
-            "bias": true
+            "output_channels": 2,
+            "kernel_size": 2,
+            "bias": true,
+            "alpha": true,
+            "learnable_epsilon": true
           },
           "layout": "canonical channels_last; adapter owns native layout",
           "masking": [],
@@ -1035,8 +1039,8 @@
             "saved_model"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1048,24 +1052,26 @@
               "float32",
               "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "function"
             ],
-            "tested": []
+            "tested": ["eager", "function"]
           },
           "keras_engine": "not_applicable",
           "config": {
-            "case": "transpose_convolution_v1",
-            "spatial_rank": 2,
+            "case": "transpose_convolution_1d_valid_v1",
+            "spatial_rank": 1,
             "input_channels": 2,
-            "output_channels": 3,
-            "kernel_size": 3,
+            "output_channels": 2,
+            "kernel_size": 2,
             "groups": 1,
-            "bias": true
+            "bias": true,
+            "alpha": true,
+            "learnable_epsilon": true
           },
           "layout": "canonical channels_last; adapter owns native layout",
           "masking": [],
@@ -1074,8 +1080,8 @@
             "saved_model"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1250,21 +1256,23 @@
               "float32",
               "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compiled_call"
             ],
-            "tested": []
+            "tested": ["eager", "compiled_call"]
           },
           "keras_engine": "tensorflow",
           "config": {
-            "case": "embed_v1",
-            "num_embeddings": 7,
-            "features": 4,
-            "query_length": 3
+            "case": "embed_lookup_and_attend_v1",
+            "num_embeddings": 5,
+            "features": 3,
+            "lookup_shape": [2, 2],
+            "query_length": 2,
+            "epsilon": "static"
           },
           "layout": "[vocabulary, features]",
           "masking": [],
@@ -1273,8 +1281,8 @@
             "weights"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1286,23 +1294,25 @@
               "float32",
               "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compiled_call"
             ],
-            "tested": []
+            "tested": ["eager", "compiled_call"]
           },
           "keras_engine": "tensorflow",
           "config": {
-            "case": "convolution_v1",
-            "spatial_rank": 2,
+            "case": "convolution_1d_valid_v1",
+            "spatial_rank": 1,
             "input_channels": 2,
-            "output_channels": 3,
-            "kernel_size": 3,
-            "bias": true
+            "output_channels": 2,
+            "kernel_size": 2,
+            "bias": true,
+            "alpha": true,
+            "learnable_epsilon": true
           },
           "layout": "canonical channels_last; adapter owns native layout",
           "masking": [],
@@ -1311,8 +1321,8 @@
             "weights"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1324,24 +1334,26 @@
               "float32",
               "float64"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compiled_call"
             ],
-            "tested": []
+            "tested": ["eager", "compiled_call"]
           },
           "keras_engine": "tensorflow",
           "config": {
-            "case": "transpose_convolution_v1",
-            "spatial_rank": 2,
+            "case": "transpose_convolution_1d_valid_v1",
+            "spatial_rank": 1,
             "input_channels": 2,
-            "output_channels": 3,
-            "kernel_size": 3,
+            "output_channels": 2,
+            "kernel_size": 2,
             "groups": 1,
-            "bias": true
+            "bias": true,
+            "alpha": true,
+            "learnable_epsilon": true
           },
           "layout": "canonical channels_last; adapter owns native layout",
           "masking": [],
@@ -1350,8 +1362,8 @@
             "weights"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1524,21 +1536,23 @@
               "bfloat16",
               "float32"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compile"
             ],
-            "tested": []
+            "tested": ["eager", "compile"]
           },
           "keras_engine": "not_applicable",
           "config": {
-            "case": "embed_v1",
-            "num_embeddings": 7,
-            "features": 4,
-            "query_length": 3
+            "case": "embed_lookup_and_attend_v1",
+            "num_embeddings": 5,
+            "features": 3,
+            "lookup_shape": [2, 2],
+            "query_length": 2,
+            "epsilon": "static"
           },
           "layout": "[vocabulary, features]",
           "masking": [],
@@ -1547,8 +1561,8 @@
             "npz"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1559,23 +1573,25 @@
               "bfloat16",
               "float32"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compile"
             ],
-            "tested": []
+            "tested": ["eager", "compile"]
           },
           "keras_engine": "not_applicable",
           "config": {
-            "case": "convolution_v1",
-            "spatial_rank": 2,
+            "case": "convolution_1d_valid_v1",
+            "spatial_rank": 1,
             "input_channels": 2,
-            "output_channels": 3,
-            "kernel_size": 3,
-            "bias": true
+            "output_channels": 2,
+            "kernel_size": 2,
+            "bias": true,
+            "alpha": true,
+            "learnable_epsilon": true
           },
           "layout": "canonical channels_last; adapter owns native layout",
           "masking": [],
@@ -1584,8 +1600,8 @@
             "npz"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1596,24 +1612,26 @@
               "bfloat16",
               "float32"
             ],
-            "tested": []
+            "tested": ["float32"]
           },
           "modes": {
             "supported": [
               "eager",
               "compile"
             ],
-            "tested": []
+            "tested": ["eager", "compile"]
           },
           "keras_engine": "not_applicable",
           "config": {
-            "case": "transpose_convolution_v1",
-            "spatial_rank": 2,
+            "case": "transpose_convolution_1d_valid_v1",
+            "spatial_rank": 1,
             "input_channels": 2,
-            "output_channels": 3,
-            "kernel_size": 3,
+            "output_channels": 2,
+            "kernel_size": 2,
             "groups": 1,
-            "bias": true
+            "bias": true,
+            "alpha": true,
+            "learnable_epsilon": true
           },
           "layout": "canonical channels_last; adapter owns native layout",
           "masking": [],
@@ -1622,8 +1640,8 @@
             "npz"
           ],
           "evidence": {
-            "kind": "declared",
-            "tests": [],
+            "kind": "oracle",
+            "tests": ["tests/conformance/test_layer_parity.py"],
             "fixture": null
           }
         },
@@ -1816,9 +1834,9 @@
       "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"], "none": []},
       "operations": {
         "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatNMN"},
-        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.tf.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.tf.YatConv1D|nmn.tf.YatConv2D|nmn.tf.YatConv3D"},
-        "transpose_convolution": {"status": "supported", "conformance": "declared", "api": "nmn.tf.YatConvTranspose1D|nmn.tf.YatConvTranspose2D|nmn.tf.YatConvTranspose3D"},
+        "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConv1D|nmn.tf.YatConv2D|nmn.tf.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConvTranspose1D|nmn.tf.YatConvTranspose2D|nmn.tf.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.MultiHeadYatAttention"},
         "may": {"status": "supported", "conformance": "declared", "api": "nmn.tf.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "declared", "api": "nmn.tf.radial_yat_attention"}
@@ -1836,9 +1854,9 @@
       "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"], "none": []},
       "operations": {
         "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatNMN"},
-        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.keras.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.keras.YatConv1D|nmn.keras.YatConv2D|nmn.keras.YatConv3D"},
-        "transpose_convolution": {"status": "supported", "conformance": "declared", "api": "nmn.keras.YatConvTranspose1D|nmn.keras.YatConvTranspose2D|nmn.keras.YatConvTranspose3D"},
+        "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConv1D|nmn.keras.YatConv2D|nmn.keras.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConvTranspose1D|nmn.keras.YatConvTranspose2D|nmn.keras.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.MultiHeadYatAttention"},
         "may": {"status": "supported", "conformance": "declared", "api": "nmn.keras.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "declared", "api": "nmn.keras.radial_yat_attention"}
@@ -1856,9 +1874,9 @@
       "masking": {"attention": ["boolean", "additive_bias", "causal", "all_masked_zero"], "may": ["causal"], "ray": ["causal"], "none": []},
       "operations": {
         "dense": {"status": "supported", "conformance": "fixture", "api": "nmn.mlx.YatNMN"},
-        "embed": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.YatConv1D|nmn.mlx.YatConv2D|nmn.mlx.YatConv3D"},
-        "transpose_convolution": {"status": "partial", "conformance": "declared", "api": "nmn.mlx.YatConvTranspose1D|nmn.mlx.YatConvTranspose2D|nmn.mlx.YatConvTranspose3D", "limitations": ["groups=1"]},
+        "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.YatEmbed"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.YatConv1D|nmn.mlx.YatConv2D|nmn.mlx.YatConv3D"},
+        "transpose_convolution": {"status": "partial", "conformance": "oracle", "api": "nmn.mlx.YatConvTranspose1D|nmn.mlx.YatConvTranspose2D|nmn.mlx.YatConvTranspose3D", "limitations": ["groups=1"]},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.MultiHeadYatAttention"},
         "may": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "declared", "api": "nmn.mlx.radial_yat_attention"}
