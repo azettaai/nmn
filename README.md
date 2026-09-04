@@ -273,7 +273,9 @@ All six backends expose the same operation families with framework-idiomatic nam
 
 ## Layer reference
 
-All layers are available across **all 6 frameworks** with verified parity.
+The layer families below are available across all six frameworks. Verification
+depth differs by operation and backend; consult the generated conformance table
+before treating an entry as oracle-tested parity.
 
 | Operation                  | PyTorch                    | TF / Keras                 | Flax NNX                 | Flax Linen                 | MLX                        |
 | -------------------------- | -------------------------- | -------------------------- | ------------------------ | -------------------------- | -------------------------- |
