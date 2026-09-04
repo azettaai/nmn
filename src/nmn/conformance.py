@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Collection
 from importlib.resources import files
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 BACKENDS = ("torch", "nnx", "linen", "tf", "keras", "mlx")
 OPERATIONS = (
@@ -104,7 +105,7 @@ def load_contract() -> dict[str, Any]:
     resource = files("nmn").joinpath("conformance_manifest.json")
     contract = json.loads(resource.read_text(encoding="utf-8"))
     validate_contract(contract)
-    return contract
+    return cast(dict[str, Any], contract)
 
 
 def _mapping(value: Any, path: str) -> Mapping[str, Any]:
@@ -152,7 +153,7 @@ def _string_list(value: Any, path: str, *, nonempty: bool = False) -> list[str]:
     return value
 
 
-def _subset(values: list[str], allowed: list[str] | set[str], path: str) -> None:
+def _subset(values: list[str], allowed: Collection[str], path: str) -> None:
     unknown = set(values) - set(allowed)
     if unknown:
         raise ContractError(f"{path} has unsupported values: {sorted(unknown)}")
