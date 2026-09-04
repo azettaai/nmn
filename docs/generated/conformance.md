@@ -27,6 +27,23 @@ A cell is verified only when it names tested dtypes, execution modes, and eviden
 | may | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
 | ray | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) | supported / oracle (float32) |
 
+## API evidence scope
+
+The 1D convolution symbols below are covered by the exact oracle profiles. The 2D and 3D symbols are public APIs but remain declared until matching rank-specific profiles are added.
+
+- PyTorch convolution: oracle `nmn.torch.YatConv1D`; declared `nmn.torch.YatConv2D, nmn.torch.YatConv3D`.
+- PyTorch transpose_convolution: oracle `nmn.torch.YatConvTranspose1D`; declared `nmn.torch.YatConvTranspose2D, nmn.torch.YatConvTranspose3D`.
+- Flax NNX convolution: oracle `nmn.nnx.YatConv1D`; declared `nmn.nnx.YatConv2D, nmn.nnx.YatConv3D`.
+- Flax NNX transpose_convolution: oracle `nmn.nnx.YatConvTranspose1D`; declared `nmn.nnx.YatConvTranspose2D, nmn.nnx.YatConvTranspose3D`.
+- Flax Linen convolution: oracle `nmn.linen.YatConv1D`; declared `nmn.linen.YatConv2D, nmn.linen.YatConv3D`.
+- Flax Linen transpose_convolution: oracle `nmn.linen.YatConvTranspose1D`; declared `nmn.linen.YatConvTranspose2D, nmn.linen.YatConvTranspose3D`.
+- TensorFlow convolution: oracle `nmn.tf.YatConv1D`; declared `nmn.tf.YatConv2D, nmn.tf.YatConv3D`.
+- TensorFlow transpose_convolution: oracle `nmn.tf.YatConvTranspose1D`; declared `nmn.tf.YatConvTranspose2D, nmn.tf.YatConvTranspose3D`.
+- Keras 3 convolution: oracle `nmn.keras.YatConv1D`; declared `nmn.keras.YatConv2D, nmn.keras.YatConv3D`.
+- Keras 3 transpose_convolution: oracle `nmn.keras.YatConvTranspose1D`; declared `nmn.keras.YatConvTranspose2D, nmn.keras.YatConvTranspose3D`.
+- MLX convolution: oracle `nmn.mlx.YatConv1D`; declared `nmn.mlx.YatConv2D, nmn.mlx.YatConv3D`.
+- MLX transpose_convolution: oracle `nmn.mlx.YatConvTranspose1D`; declared `nmn.mlx.YatConvTranspose2D, nmn.mlx.YatConvTranspose3D`.
+
 ## Tolerance policy
 
 A tolerance is enforced only when at least one exact profile tests that dtype.

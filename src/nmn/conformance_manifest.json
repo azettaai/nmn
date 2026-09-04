@@ -1873,8 +1873,8 @@
       "operations": {
         "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatNMN"},
         "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatConv1D|nmn.torch.YatConv2D|nmn.torch.YatConv3D"},
-        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatConvTranspose1D|nmn.torch.YatConvTranspose2D|nmn.torch.YatConvTranspose3D"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatConv1D", "declared_api": "nmn.torch.YatConv2D|nmn.torch.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.YatConvTranspose1D", "declared_api": "nmn.torch.YatConvTranspose2D|nmn.torch.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.yat_attention|nmn.torch.yat_attention_weights"},
         "may": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.torch.radial_yat_attention"}
@@ -1893,8 +1893,8 @@
       "operations": {
         "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatNMN"},
         "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.Embed"},
-        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatConv"},
-        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatConvTranspose"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatConv1D", "declared_api": "nmn.nnx.YatConv2D|nmn.nnx.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.YatConvTranspose1D", "declared_api": "nmn.nnx.YatConvTranspose2D|nmn.nnx.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.yat_attention|nmn.nnx.yat_attention_weights"},
         "may": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.nnx.radial_yat_attention"}
@@ -1913,8 +1913,8 @@
       "operations": {
         "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatNMN"},
         "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatConv1D|nmn.linen.YatConv2D|nmn.linen.YatConv3D"},
-        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatConvTranspose1D|nmn.linen.YatConvTranspose2D|nmn.linen.YatConvTranspose3D"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatConv1D", "declared_api": "nmn.linen.YatConv2D|nmn.linen.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.YatConvTranspose1D", "declared_api": "nmn.linen.YatConvTranspose2D|nmn.linen.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.yat_attention|nmn.linen.yat_attention_weights"},
         "may": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.linen.radial_yat_attention"}
@@ -1933,8 +1933,8 @@
       "operations": {
         "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatNMN"},
         "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConv1D|nmn.tf.YatConv2D|nmn.tf.YatConv3D"},
-        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConvTranspose1D|nmn.tf.YatConvTranspose2D|nmn.tf.YatConvTranspose3D"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConv1D", "declared_api": "nmn.tf.YatConv2D|nmn.tf.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.YatConvTranspose1D", "declared_api": "nmn.tf.YatConvTranspose2D|nmn.tf.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.yat_attention|nmn.tf.yat_attention_weights"},
         "may": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.tf.radial_yat_attention"}
@@ -1953,8 +1953,8 @@
       "operations": {
         "dense": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatNMN"},
         "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConv1D|nmn.keras.YatConv2D|nmn.keras.YatConv3D"},
-        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConvTranspose1D|nmn.keras.YatConvTranspose2D|nmn.keras.YatConvTranspose3D"},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConv1D", "declared_api": "nmn.keras.YatConv2D|nmn.keras.YatConv3D"},
+        "transpose_convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.YatConvTranspose1D", "declared_api": "nmn.keras.YatConvTranspose2D|nmn.keras.YatConvTranspose3D"},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.yat_attention|nmn.keras.yat_attention_weights"},
         "may": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.keras.radial_yat_attention"}
@@ -1973,8 +1973,8 @@
       "operations": {
         "dense": {"status": "supported", "conformance": "fixture", "api": "nmn.mlx.YatNMN"},
         "embed": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.YatEmbed"},
-        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.YatConv1D|nmn.mlx.YatConv2D|nmn.mlx.YatConv3D"},
-        "transpose_convolution": {"status": "partial", "conformance": "oracle", "api": "nmn.mlx.YatConvTranspose1D|nmn.mlx.YatConvTranspose2D|nmn.mlx.YatConvTranspose3D", "limitations": ["groups=1"]},
+        "convolution": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.YatConv1D", "declared_api": "nmn.mlx.YatConv2D|nmn.mlx.YatConv3D"},
+        "transpose_convolution": {"status": "partial", "conformance": "oracle", "api": "nmn.mlx.YatConvTranspose1D", "declared_api": "nmn.mlx.YatConvTranspose2D|nmn.mlx.YatConvTranspose3D", "limitations": ["groups=1"]},
         "attention": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.yat_attention|nmn.mlx.yat_attention_weights"},
         "may": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.maclaurin_yat_attention"},
         "ray": {"status": "supported", "conformance": "oracle", "api": "nmn.mlx.radial_yat_attention"}

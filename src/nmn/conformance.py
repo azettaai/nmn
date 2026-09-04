@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from importlib.resources import files
 from typing import Any, Mapping
 
@@ -280,6 +281,12 @@ def _validate_profile(
     supported_modes, tested_modes = _validate_coverage(
         profile["modes"], f"{path}.modes", backend["execution"]
     )
+    if capability["status"] in {"supported", "partial"}:
+        if not supported_dtypes or not supported_modes:
+            raise ContractError(
+                f"{path}.{capability['status']} capability must name supported "
+                "dtypes and modes"
+            )
     keras_engine = _string(profile["keras_engine"], f"{path}.keras_engine")
     if keras_engine not in KERAS_ENGINES:
         raise ContractError(f"{path}.keras_engine is invalid")
@@ -319,6 +326,11 @@ def _validate_profile(
         if tested_dtypes or tested_modes or tests or fixture is not None:
             raise ContractError(
                 f"{path}.declared evidence must not claim test coverage"
+            )
+        if capability["status"] in {"supported", "partial"}:
+            raise ContractError(
+                f"{path}.{capability['status']} capability must use oracle or "
+                "fixture evidence"
             )
     else:
         if not tested_dtypes or not tested_modes or not tests:
@@ -396,10 +408,11 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
             if (
                 not isinstance(value, (int, float))
                 or isinstance(value, bool)
+                or not math.isfinite(value)
                 or value < 0
             ):
                 raise ContractError(
-                    f"contract.tolerances.{dtype}.{key} must be nonnegative"
+                    f"contract.tolerances.{dtype}.{key} must be finite and nonnegative"
                 )
 
     operations = _mapping(contract["operations"], "contract.operations")
@@ -482,7 +495,7 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
                 capability,
                 {"status", "conformance", "api"},
                 capability_path,
-                optional={"limitations"},
+                optional={"declared_api", "limitations"},
             )
             status = _string(capability["status"], f"{capability_path}.status")
             conformance = _string(
@@ -493,6 +506,11 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
             if conformance not in CONFORMANCE_STATES:
                 raise ContractError(f"{capability_path}.conformance is invalid")
             api_names = _string(capability["api"], f"{capability_path}.api").split("|")
+            declared_api_names: list[str] = []
+            if "declared_api" in capability:
+                declared_api_names = _string(
+                    capability["declared_api"], f"{capability_path}.declared_api"
+                ).split("|")
             if "limitations" in capability:
                 _string_list(
                     capability["limitations"],
@@ -502,6 +520,18 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
             if any(not name.startswith(f"nmn.{backend_name}.") for name in api_names):
                 raise ContractError(
                     f"{capability_path}.api must contain fully qualified nmn.{backend_name} symbols"
+                )
+            if any(
+                not name.startswith(f"nmn.{backend_name}.")
+                for name in declared_api_names
+            ):
+                raise ContractError(
+                    f"{capability_path}.declared_api must contain fully qualified "
+                    f"nmn.{backend_name} symbols"
+                )
+            if set(api_names) & set(declared_api_names):
+                raise ContractError(
+                    f"{capability_path}.api and declared_api must not overlap"
                 )
             operation = operations[operation_name]
             if operation["mask_key"] not in masking:
@@ -560,6 +590,29 @@ def render_support_markdown(contract: Mapping[str, Any] | None = None) -> str:
                 f"{capability['status']} / {capability['conformance']} ({tested})"
             )
         lines.append(f"| {operation_name} | " + " | ".join(cells) + " |")
+    lines.extend(
+        [
+            "",
+            "## API evidence scope",
+            "",
+            "The 1D convolution symbols below are covered by the exact oracle profiles. "
+            "The 2D and 3D symbols are public APIs but remain declared until matching "
+            "rank-specific profiles are added.",
+            "",
+        ]
+    )
+    for backend_name in BACKENDS:
+        display_name = contract["backends"][backend_name]["display_name"]
+        for operation_name in ("convolution", "transpose_convolution"):
+            capability = contract["backends"][backend_name]["operations"][
+                operation_name
+            ]
+            verified = capability["api"].replace("|", ", ")
+            declared = capability["declared_api"].replace("|", ", ")
+            lines.append(
+                f"- {display_name} {operation_name}: oracle `{verified}`; "
+                f"declared `{declared}`."
+            )
     lines.extend(
         [
             "",

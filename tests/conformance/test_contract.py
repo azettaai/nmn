@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import subprocess
 import sys
@@ -55,6 +56,45 @@ def test_packaged_contract_is_valid_json_and_complete():
         ),
         (
             lambda value: (
+                value["profiles"]["torch"]["dense"]["dtypes"].__setitem__(
+                    "supported", []
+                ),
+                value["profiles"]["torch"]["dense"]["dtypes"].__setitem__("tested", []),
+            ),
+            "supported capability must name supported dtypes and modes",
+        ),
+        (
+            lambda value: (
+                value["profiles"]["mlx"]["transpose_convolution"]["modes"].__setitem__(
+                    "supported", []
+                ),
+                value["profiles"]["mlx"]["transpose_convolution"]["modes"].__setitem__(
+                    "tested", []
+                ),
+            ),
+            "partial capability must name supported dtypes and modes",
+        ),
+        (
+            lambda value: value["profiles"]["torch"]["dense"]["evidence"].__setitem__(
+                "tests", []
+            ),
+            "verified evidence must name tested dtypes, modes, and tests",
+        ),
+        (
+            lambda value: (
+                value["backends"]["torch"]["operations"]["dense"].__setitem__(
+                    "conformance", "declared"
+                ),
+                value["profiles"]["torch"]["dense"]["dtypes"].__setitem__("tested", []),
+                value["profiles"]["torch"]["dense"]["modes"].__setitem__("tested", []),
+                value["profiles"]["torch"]["dense"]["evidence"].update(
+                    kind="declared", tests=[], fixture=None
+                ),
+            ),
+            "supported capability must use oracle or fixture evidence",
+        ),
+        (
+            lambda value: (
                 value["backends"]["tf"]["operations"]["may"].__setitem__(
                     "conformance", "declared"
                 ),
@@ -82,6 +122,18 @@ def test_packaged_contract_is_valid_json_and_complete():
             "unexpected keys",
         ),
         (
+            lambda value: value["backends"]["torch"]["operations"][
+                "convolution"
+            ].__setitem__("declared_api", "nmn.keras.YatConv2D"),
+            "declared_api must contain fully qualified nmn.torch symbols",
+        ),
+        (
+            lambda value: value["backends"]["torch"]["operations"][
+                "convolution"
+            ].__setitem__("declared_api", "nmn.torch.YatConv1D"),
+            "api and declared_api must not overlap",
+        ),
+        (
             lambda value: value["profiles"]["torch"]["dense"].__setitem__("typo", True),
             "unexpected keys",
         ),
@@ -105,6 +157,17 @@ def test_contract_validator_fails_closed(mutation, message):
     contract = copy.deepcopy(load_contract())
     mutation(contract)
     with pytest.raises(ContractError, match=message):
+        validate_contract(contract)
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+@pytest.mark.parametrize("key", ["rtol", "atol"])
+def test_contract_validator_rejects_nonfinite_tolerances(value, key):
+    from nmn.conformance import validate_contract
+
+    contract = copy.deepcopy(load_contract())
+    contract["tolerances"]["float32"][key] = value
+    with pytest.raises(ContractError, match="must be finite and nonnegative"):
         validate_contract(contract)
 
 
@@ -156,6 +219,25 @@ def test_attention_capabilities_name_the_exact_functional_api_under_test():
             f"nmn.{backend_name}.yat_attention",
             f"nmn.{backend_name}.yat_attention_weights",
         ]
+
+
+def test_convolution_oracle_claims_are_scoped_to_the_tested_spatial_rank():
+    contract = load_contract()
+    for backend_name, backend in contract["backends"].items():
+        for operation, stem in (
+            ("convolution", "YatConv"),
+            ("transpose_convolution", "YatConvTranspose"),
+        ):
+            capability = backend["operations"][operation]
+            assert capability["api"] == f"nmn.{backend_name}.{stem}1D"
+            assert capability["declared_api"].split("|") == [
+                f"nmn.{backend_name}.{stem}2D",
+                f"nmn.{backend_name}.{stem}3D",
+            ]
+            assert (
+                contract["profiles"][backend_name][operation]["config"]["spatial_rank"]
+                == 1
+            )
 
 
 def test_apple_fixture_evidence_names_the_ci_generated_artifact():
