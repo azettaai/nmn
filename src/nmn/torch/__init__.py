@@ -1,5 +1,7 @@
 """PyTorch implementation of Neural Matter Network (NMN) layers."""
 
+from . import _dependency as _dependency
+
 # Import all layers from the layers module
 # Import attention
 from .attention import (
