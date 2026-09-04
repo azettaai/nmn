@@ -16,6 +16,10 @@ from keras.src.ops.operation_utils import compute_conv_output_shape
 from keras.src.saving.object_registration import register_keras_serializable
 from keras.src.saving.serialization_lib import deserialize_keras_object
 
+from nmn._conv_transpose import (
+    canonical_same_crop_or_pad,
+    canonical_transpose_output_spatial,
+)
 from nmn._epsilon import (
     epsilon_parameter_dtype,
     inverse_softplus,
@@ -181,6 +185,28 @@ def _conv_output_shape(layer, input_shape):
 
 
 def _conv_transpose_output_shape(layer, input_shape):
+    if getattr(layer, "output_shape_mode", "framework") == "nmn":
+        rank = len(layer.kernel_size)
+        channels_first = (layer.data_format or "channels_last") == "channels_first"
+        spatial = input_shape[2:] if channels_first else input_shape[1:-1]
+        output_spatial = []
+        for axis, size in enumerate(spatial):
+            if size is None:
+                output_spatial.append(None)
+            else:
+                output_spatial.append(
+                    canonical_transpose_output_spatial(
+                        (size,),
+                        (layer.kernel_size[axis],),
+                        (layer.strides[axis],),
+                        layer.padding,
+                        (layer.dilation_rate[axis],),
+                        (layer.output_padding or (0,) * rank)[axis],
+                    )[0]
+                )
+        if channels_first:
+            return (input_shape[0], layer.filters, *output_spatial)
+        return (input_shape[0], *output_spatial, layer.filters)
     return tuple(
         compute_conv_transpose_output_shape(
             input_shape,
@@ -193,6 +219,51 @@ def _conv_transpose_output_shape(layer, input_shape):
             dilation_rate=tuple(layer.dilation_rate),
         )
     )
+
+
+def _nmn_conv_transpose(layer, inputs, kernel):
+    """Run Keras transpose convolution with optional canonical NMN sizing."""
+    output_padding = layer.output_padding
+    canonical = getattr(layer, "output_shape_mode", "framework") == "nmn"
+    if canonical and layer.padding == "same":
+        padding = "valid"
+        output_padding = (0,) * len(layer.kernel_size)
+    elif canonical and output_padding is None:
+        padding = layer.padding
+        output_padding = (0,) * len(layer.kernel_size)
+    else:
+        padding = layer.padding
+    result = ops.conv_transpose(
+        inputs,
+        kernel,
+        strides=layer.strides,
+        padding=padding,
+        output_padding=output_padding,
+        data_format="channels_last",
+        dilation_rate=layer.dilation_rate,
+    )
+    if canonical and layer.padding == "same":
+        adjustments = canonical_same_crop_or_pad(
+            layer.kernel_size,
+            layer.strides,
+            layer.dilation_rate,
+            layer.output_padding or (0,) * len(layer.kernel_size),
+        )
+        slices = [slice(None)]
+        slices.extend(
+            slice(max(low, 0), -high if high > 0 else None)
+            for low, high in adjustments
+        )
+        slices.append(slice(None))
+        result = result[tuple(slices)]
+        border_padding = [(0, 0)]
+        border_padding.extend(
+            (max(-low, 0), max(-high, 0)) for low, high in adjustments
+        )
+        border_padding.append((0, 0))
+        if any(low or high for low, high in border_padding):
+            result = ops.pad(result, border_padding)
+    return result
 
 
 def _standardize_output_padding(output_padding, rank):
@@ -1340,6 +1411,8 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
         dilation_rate: an integer or tuple/list of a single integer.
         output_padding: Optional integer or tuple/list of a single integer
             specifying the added output size along the spatial dimension.
+        output_shape_mode: `"framework"` preserves Keras-native inferred shapes;
+            `"nmn"` selects NMN's canonical cross-framework shape contract.
         use_bias: Boolean, whether the layer uses a bias vector.
         use_alpha: Boolean, whether to use alpha scaling. Defaults to `True`.
         epsilon: Float, small constant for numerical stability.
@@ -1381,6 +1454,7 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
         kernel_constraint=None,
         bias_constraint=None,
         output_padding=None,
+        output_shape_mode="framework",
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
@@ -1397,6 +1471,12 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
             else (dilation_rate,)
         )
         self.output_padding = _standardize_output_padding(output_padding, 1)
+        if output_shape_mode not in {"framework", "nmn"}:
+            raise ValueError(
+                "output_shape_mode must be 'framework' or 'nmn', "
+                f"got {output_shape_mode!r}"
+            )
+        self.output_shape_mode = output_shape_mode
         self.use_alpha = use_alpha
         self.epsilon = validate_epsilon(epsilon)
         self.learnable_epsilon = learnable_epsilon
@@ -1526,15 +1606,7 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
             )
 
         # Compute transposed convolution (dot product)
-        dot_prod_map = ops.conv_transpose(
-            inputs,
-            kernel,
-            strides=self.strides,
-            padding=self.padding,
-            output_padding=self.output_padding,
-            data_format="channels_last",
-            dilation_rate=self.dilation_rate,
-        )
+        dot_prod_map = _nmn_conv_transpose(self, inputs, kernel)
 
         # Compute squared input for YAT distance
         inputs_squared = inputs * inputs
@@ -1543,14 +1615,8 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
         ones_kernel_shape = tuple(self.kernel_size) + (1, self.input_dim)
         ones_kernel = ops.ones(ones_kernel_shape, dtype=kernel.dtype)
 
-        patch_sq_sum_map_raw = ops.conv_transpose(
-            inputs_squared,
-            ones_kernel,
-            strides=self.strides,
-            padding=self.padding,
-            output_padding=self.output_padding,
-            data_format="channels_last",
-            dilation_rate=self.dilation_rate,
+        patch_sq_sum_map_raw = _nmn_conv_transpose(
+            self, inputs_squared, ones_kernel
         )
 
         patch_sq_sum_map = ops.repeat(patch_sq_sum_map_raw, self.filters, axis=-1)
@@ -1585,6 +1651,7 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
                 "data_format": self.data_format,
                 "dilation_rate": self.dilation_rate,
                 "output_padding": self.output_padding,
+                "output_shape_mode": self.output_shape_mode,
                 "use_bias": self.use_bias,
                 "constant_bias": self.constant_bias,
                 "use_alpha": self.use_alpha,
@@ -1632,6 +1699,8 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
         dilation_rate: an integer or tuple/list of 2 integers.
         output_padding: Optional integer or tuple/list of 2 integers specifying
             the added output size along each spatial dimension.
+        output_shape_mode: `"framework"` preserves Keras-native inferred shapes;
+            `"nmn"` selects NMN's canonical cross-framework shape contract.
         use_bias: Boolean, whether the layer uses a bias vector.
         use_alpha: Boolean, whether to use alpha scaling. Defaults to `True`.
         epsilon: Float, small constant for numerical stability.
@@ -1673,6 +1742,7 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
         kernel_constraint=None,
         bias_constraint=None,
         output_padding=None,
+        output_shape_mode="framework",
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
@@ -1693,6 +1763,12 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
             else (dilation_rate, dilation_rate)
         )
         self.output_padding = _standardize_output_padding(output_padding, 2)
+        if output_shape_mode not in {"framework", "nmn"}:
+            raise ValueError(
+                "output_shape_mode must be 'framework' or 'nmn', "
+                f"got {output_shape_mode!r}"
+            )
+        self.output_shape_mode = output_shape_mode
         self.use_alpha = use_alpha
         self.epsilon = validate_epsilon(epsilon)
         self.learnable_epsilon = learnable_epsilon
@@ -1822,15 +1898,7 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
             )
 
         # Compute transposed convolution (dot product)
-        dot_prod_map = ops.conv_transpose(
-            inputs,
-            kernel,
-            strides=self.strides,
-            padding=self.padding,
-            output_padding=self.output_padding,
-            data_format="channels_last",
-            dilation_rate=self.dilation_rate,
-        )
+        dot_prod_map = _nmn_conv_transpose(self, inputs, kernel)
 
         # Compute squared input for YAT distance
         inputs_squared = inputs * inputs
@@ -1839,14 +1907,8 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
         ones_kernel_shape = tuple(self.kernel_size) + (1, self.input_dim)
         ones_kernel = ops.ones(ones_kernel_shape, dtype=kernel.dtype)
 
-        patch_sq_sum_map_raw = ops.conv_transpose(
-            inputs_squared,
-            ones_kernel,
-            strides=self.strides,
-            padding=self.padding,
-            output_padding=self.output_padding,
-            data_format="channels_last",
-            dilation_rate=self.dilation_rate,
+        patch_sq_sum_map_raw = _nmn_conv_transpose(
+            self, inputs_squared, ones_kernel
         )
 
         patch_sq_sum_map = ops.repeat(patch_sq_sum_map_raw, self.filters, axis=-1)
@@ -1881,6 +1943,7 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
                 "data_format": self.data_format,
                 "dilation_rate": self.dilation_rate,
                 "output_padding": self.output_padding,
+                "output_shape_mode": self.output_shape_mode,
                 "use_bias": self.use_bias,
                 "constant_bias": self.constant_bias,
                 "use_alpha": self.use_alpha,
@@ -1928,6 +1991,8 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
         dilation_rate: an integer or tuple/list of 3 integers.
         output_padding: Optional integer or tuple/list of 3 integers specifying
             the added output size along each spatial dimension.
+        output_shape_mode: `"framework"` preserves Keras-native inferred shapes;
+            `"nmn"` selects NMN's canonical cross-framework shape contract.
         use_bias: Boolean, whether the layer uses a bias vector.
         use_alpha: Boolean, whether to use alpha scaling. Defaults to `True`.
         epsilon: Float, small constant for numerical stability.
@@ -1969,6 +2034,7 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
         kernel_constraint=None,
         bias_constraint=None,
         output_padding=None,
+        output_shape_mode="framework",
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
@@ -1991,6 +2057,12 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
             else (dilation_rate, dilation_rate, dilation_rate)
         )
         self.output_padding = _standardize_output_padding(output_padding, 3)
+        if output_shape_mode not in {"framework", "nmn"}:
+            raise ValueError(
+                "output_shape_mode must be 'framework' or 'nmn', "
+                f"got {output_shape_mode!r}"
+            )
+        self.output_shape_mode = output_shape_mode
         self.use_alpha = use_alpha
         self.epsilon = validate_epsilon(epsilon)
         self.learnable_epsilon = learnable_epsilon
@@ -2120,15 +2192,7 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
             )
 
         # Compute transposed convolution (dot product)
-        dot_prod_map = ops.conv_transpose(
-            inputs,
-            kernel,
-            strides=self.strides,
-            padding=self.padding,
-            output_padding=self.output_padding,
-            data_format="channels_last",
-            dilation_rate=self.dilation_rate,
-        )
+        dot_prod_map = _nmn_conv_transpose(self, inputs, kernel)
 
         # Compute squared input for YAT distance
         inputs_squared = inputs * inputs
@@ -2137,14 +2201,8 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
         ones_kernel_shape = tuple(self.kernel_size) + (1, self.input_dim)
         ones_kernel = ops.ones(ones_kernel_shape, dtype=kernel.dtype)
 
-        patch_sq_sum_map_raw = ops.conv_transpose(
-            inputs_squared,
-            ones_kernel,
-            strides=self.strides,
-            padding=self.padding,
-            output_padding=self.output_padding,
-            data_format="channels_last",
-            dilation_rate=self.dilation_rate,
+        patch_sq_sum_map_raw = _nmn_conv_transpose(
+            self, inputs_squared, ones_kernel
         )
 
         patch_sq_sum_map = ops.repeat(patch_sq_sum_map_raw, self.filters, axis=-1)
@@ -2178,6 +2236,7 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
                 "data_format": self.data_format,
                 "dilation_rate": self.dilation_rate,
                 "output_padding": self.output_padding,
+                "output_shape_mode": self.output_shape_mode,
                 "use_bias": self.use_bias,
                 "constant_bias": self.constant_bias,
                 "use_alpha": self.use_alpha,

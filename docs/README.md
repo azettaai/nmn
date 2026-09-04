@@ -10,6 +10,7 @@ Welcome to the **Neural Matter Networks** documentation. This is the local-repo 
 | -------------------------------------------- | ----------------------------------------------------------- |
 | **Understand the math**                       | [Architecture & Theory](architecture.md)                    |
 | **Port an existing model**                   | [Migration Cheat Sheet](migration.md)                       |
+| **Align transposed-convolution shapes**      | [ConvTranspose shape contract](conv-transpose-shapes.md)     |
 | **Pick the right framework**                 | [Framework comparison](#framework-comparison) below          |
 | **Discover the package from a terminal**     | Run `nmn` / `nmn guide <fw>` / `nmn features` / `nmn doctor`  |
 | **See code snippets per framework**          | [`EXAMPLES.md`](../EXAMPLES.md) at repo root                |

@@ -27,6 +27,8 @@ from flax.typing import (
 )
 from jax import lax
 
+from nmn._conv_transpose import canonical_jax_transpose_padding
+
 from .._numerics import finite_cast, fp32_if_low_precision, inverse_softplus
 from .utils import (
     DEFAULT_CONSTANT_ALPHA,
@@ -73,6 +75,8 @@ class YatConvTranspose(Module):
         strides: Inter-window strides (default: 1).
         padding: 'SAME', 'VALID', 'CIRCULAR', or sequence of (low, high) pairs.
         kernel_dilation: Dilation factor for kernel (default: 1).
+        output_padding: Optional high-side output extension. Passing it explicitly,
+            including zero, selects the canonical NMN output-shape contract.
         use_bias: Whether to add a bias (default: True).
         constant_bias: If a float, use that value as a fixed (non-learnable)
             bias constant. If None (default), use learnable bias.
@@ -112,6 +116,7 @@ class YatConvTranspose(Module):
         *,
         padding: PaddingLike = "SAME",
         kernel_dilation: int | tp.Sequence[int] | None = None,
+        output_padding: int | tp.Sequence[int] | None = None,
         use_bias: bool = True,
         constant_bias: tp.Optional[float] = None,
         softplus_bias: bool = False,
@@ -150,6 +155,7 @@ class YatConvTranspose(Module):
         self.strides = strides
         self.padding = padding
         self.kernel_dilation = kernel_dilation
+        self.output_padding = output_padding
         self.use_dropconnect = use_dropconnect
         self.mask = mask
         self.dtype = dtype
@@ -262,6 +268,18 @@ class YatConvTranspose(Module):
         padding_lax = canonicalize_padding(self.padding, len(self.kernel_size))
         if padding_lax == "CIRCULAR":
             padding_lax = "VALID"
+        if self.output_padding is not None:
+            if not isinstance(padding_lax, str):
+                raise ValueError(
+                    "output_padding requires padding to be 'SAME' or 'VALID'"
+                )
+            padding_lax = canonical_jax_transpose_padding(
+                self.kernel_size,
+                strides,
+                padding_lax,
+                kernel_dilation,
+                self.output_padding,
+            )
 
         kernel_val = self.kernel[...]
 
