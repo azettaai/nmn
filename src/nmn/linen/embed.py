@@ -14,6 +14,8 @@ from flax import linen as nn
 from flax.linen.dtypes import promote_dtype
 from flax.linen.module import Module, compact
 
+from nmn._validation import validate_positive_int
+
 from ._yat_core import reduction_safe_upcast, saturating_downcast
 
 __all__ = ["YatEmbed"]
@@ -56,6 +58,11 @@ class YatEmbed(Module):
     param_dtype: Any = jnp.float32
     embedding_init: Any = default_embed_init
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        validate_positive_int(self.num_embeddings, "num_embeddings")
+        validate_positive_int(self.features, "features")
 
     @compact
     def __call__(self, inputs):

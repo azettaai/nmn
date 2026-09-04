@@ -22,6 +22,7 @@ from flax.typing import (
 from jax import lax
 
 from nmn._kernel_bank import initializer_signature
+from nmn._validation import validate_positive_int, validate_rate
 
 from ..kernel_bank import KernelBank, _BankParam
 from ._numerics import fp32_if_low_precision, inverse_softplus
@@ -181,10 +182,9 @@ class YatNMN(Module):
         rngs: rnglib.Rngs,
     ):
 
-        if not 0.0 <= drop_rate < 1.0:
-            raise ValueError(
-                f"drop_rate must be in the half-open interval [0, 1), got {drop_rate}"
-            )
+        in_features = validate_positive_int(in_features, "in_features")
+        out_features = validate_positive_int(out_features, "out_features")
+        drop_rate = validate_rate(drop_rate, "drop_rate")
 
         # ── Lazy mode (issue #37): freeze ONLY the kernel ───────────────────────
         # `freeze_kernel` is an alias for `lazy`. When enabled, the kernel is stored

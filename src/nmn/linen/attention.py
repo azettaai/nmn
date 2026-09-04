@@ -17,6 +17,8 @@ from flax.linen.dtypes import promote_dtype
 from flax.linen.module import Module, compact
 from jax import Array
 
+from nmn._validation import validate_positive_int, validate_rate
+
 # Re-export attention functions from NNX (same JAX backend)
 from nmn.nnx.layers.attention._attention_core import (
     validate_attention_normalization,
@@ -210,6 +212,15 @@ class MultiHeadAttention(Module):
     # Appended after every pre-existing field to preserve the positional
     # constructor ABI of Linen dataclass modules.
     normalization: str = "softmax"
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        validate_positive_int(self.num_heads, "num_heads")
+        if self.qkv_features is not None:
+            validate_positive_int(self.qkv_features, "qkv_features")
+        if self.out_features is not None:
+            validate_positive_int(self.out_features, "out_features")
+        validate_rate(self.dropout_rate, "dropout_rate")
 
     @compact
     def __call__(

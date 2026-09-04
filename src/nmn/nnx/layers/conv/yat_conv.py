@@ -33,6 +33,7 @@ from flax.typing import (
 from jax import lax
 
 from nmn._kernel_bank import initializer_signature
+from nmn._validation import validate_positive_int, validate_rate
 
 from ...kernel_bank import KernelBank, _BankParam
 from .._numerics import finite_cast, fp32_if_low_precision, inverse_softplus
@@ -163,12 +164,12 @@ class YatConv(Module):
         kernel_bank: tp.Optional[KernelBank] = None,
         rngs: rnglib.Rngs,
     ):
-        if not 0.0 <= drop_rate < 1.0:
-            raise ValueError(
-                f"drop_rate must be in the half-open interval [0, 1), got {drop_rate}"
-            )
-        if feature_group_count <= 0:
-            raise ValueError("feature_group_count must be positive")
+        in_features = validate_positive_int(in_features, "in_features")
+        out_features = validate_positive_int(out_features, "out_features")
+        feature_group_count = validate_positive_int(
+            feature_group_count, "feature_group_count"
+        )
+        drop_rate = validate_rate(drop_rate, "drop_rate")
         if in_features % feature_group_count != 0:
             raise ValueError("in_features must be a multiple of feature_group_count")
         if out_features % feature_group_count != 0:

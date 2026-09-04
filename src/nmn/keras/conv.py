@@ -26,6 +26,7 @@ from nmn._epsilon import (
     validate_epsilon,
     validate_epsilon_for_dtype,
 )
+from nmn._validation import validate_positive_int, validate_rate
 
 from ._yat_core import reduction_safe_upcast, yat_score
 
@@ -466,7 +467,7 @@ class YatConv1D(_KernelBankSerializationMixin, Layer):
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size if isinstance(kernel_size, (list, tuple)) else (kernel_size,)
         )
@@ -482,13 +483,13 @@ class YatConv1D(_KernelBankSerializationMixin, Layer):
             dilation != 1 for dilation in self.dilation_rate
         ):
             raise ValueError("`strides > 1` is incompatible with `dilation_rate > 1`.")
-        self.groups = groups
+        self.groups = validate_positive_int(groups, "groups")
         self.use_alpha = use_alpha
         self.epsilon = validate_epsilon(epsilon)
         self.learnable_epsilon = learnable_epsilon
         self.weight_normalized = weight_normalized
         self.use_dropconnect = use_dropconnect
-        self.drop_rate = drop_rate
+        self.drop_rate = validate_rate(drop_rate, "drop_rate")
         self.tie_kernel_bank = tie_kernel_bank
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id
@@ -827,7 +828,7 @@ class YatConv2D(_KernelBankSerializationMixin, Layer):
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))
@@ -843,13 +844,13 @@ class YatConv2D(_KernelBankSerializationMixin, Layer):
             if isinstance(dilation_rate, (list, tuple))
             else (dilation_rate, dilation_rate)
         )
-        self.groups = groups
+        self.groups = validate_positive_int(groups, "groups")
         self.use_alpha = use_alpha
         self.epsilon = validate_epsilon(epsilon)
         self.learnable_epsilon = learnable_epsilon
         self.weight_normalized = weight_normalized
         self.use_dropconnect = use_dropconnect
-        self.drop_rate = drop_rate
+        self.drop_rate = validate_rate(drop_rate, "drop_rate")
         self.tie_kernel_bank = tie_kernel_bank
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id
@@ -1144,7 +1145,7 @@ class YatConv3D(_KernelBankSerializationMixin, Layer):
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))
@@ -1162,13 +1163,13 @@ class YatConv3D(_KernelBankSerializationMixin, Layer):
             if isinstance(dilation_rate, (list, tuple))
             else (dilation_rate, dilation_rate, dilation_rate)
         )
-        self.groups = groups
+        self.groups = validate_positive_int(groups, "groups")
         self.use_alpha = use_alpha
         self.epsilon = validate_epsilon(epsilon)
         self.learnable_epsilon = learnable_epsilon
         self.weight_normalized = weight_normalized
         self.use_dropconnect = use_dropconnect
-        self.drop_rate = drop_rate
+        self.drop_rate = validate_rate(drop_rate, "drop_rate")
         self.tie_kernel_bank = tie_kernel_bank
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id
@@ -1457,7 +1458,7 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size if isinstance(kernel_size, (list, tuple)) else (kernel_size,)
         )
@@ -1481,7 +1482,7 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
         self.learnable_epsilon = learnable_epsilon
         self.weight_normalized = weight_normalized
         self.use_dropconnect = use_dropconnect
-        self.drop_rate = drop_rate
+        self.drop_rate = validate_rate(drop_rate, "drop_rate")
         self.tie_kernel_bank = tie_kernel_bank
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id
@@ -1743,7 +1744,7 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))
@@ -1771,7 +1772,7 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
         self.learnable_epsilon = learnable_epsilon
         self.weight_normalized = weight_normalized
         self.use_dropconnect = use_dropconnect
-        self.drop_rate = drop_rate
+        self.drop_rate = validate_rate(drop_rate, "drop_rate")
         self.tie_kernel_bank = tie_kernel_bank
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id
@@ -2033,7 +2034,7 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
         **kwargs,
     ):
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))
@@ -2063,7 +2064,7 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
         self.learnable_epsilon = learnable_epsilon
         self.weight_normalized = weight_normalized
         self.use_dropconnect = use_dropconnect
-        self.drop_rate = drop_rate
+        self.drop_rate = validate_rate(drop_rate, "drop_rate")
         self.tie_kernel_bank = tie_kernel_bank
         self.kernel_bank_size = kernel_bank_size
         self.kernel_bank_id = kernel_bank_id

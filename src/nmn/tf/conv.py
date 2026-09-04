@@ -14,6 +14,7 @@ from nmn._epsilon import (
     validate_epsilon,
     validate_epsilon_for_dtype,
 )
+from nmn._validation import validate_positive_int
 
 from ._precision import reduction_safe_upcast
 from ._yat_core import yat_score
@@ -28,8 +29,8 @@ def _epsilon_variable_dtype(layer):
 
 def _validate_groups(filters: int, groups: int) -> None:
     """Validate the statically known grouped-convolution configuration."""
-    if groups <= 0:
-        raise ValueError(f"groups must be a positive integer, got {groups}")
+    validate_positive_int(filters, "filters")
+    validate_positive_int(groups, "groups")
     if filters % groups != 0:
         raise ValueError(f"Filters ({filters}) must be divisible by groups ({groups})")
 
@@ -146,7 +147,7 @@ class YatConv1D(SingleInputSavedModelMixin, tf.Module):
         name: Optional[str] = None,
     ):
         super().__init__(name=name)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = kernel_size
         self.strides = strides
         self.padding = padding.upper()
@@ -343,7 +344,7 @@ class YatConv2D(SingleInputSavedModelMixin, tf.Module):
         name: Optional[str] = None,
     ):
         super().__init__(name=name)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))
@@ -553,7 +554,7 @@ class YatConv3D(SingleInputSavedModelMixin, tf.Module):
         name: Optional[str] = None,
     ):
         super().__init__(name=name)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))
@@ -764,7 +765,7 @@ class YatConvTranspose1D(SingleInputSavedModelMixin, tf.Module):
         output_padding: Optional[int] = None,
     ):
         super().__init__(name=name)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = kernel_size
         self.strides = strides
         self.padding = padding.upper()
@@ -1003,7 +1004,7 @@ class YatConvTranspose2D(SingleInputSavedModelMixin, tf.Module):
         output_padding: Optional[Union[int, Tuple[int, int]]] = None,
     ):
         super().__init__(name=name)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))
@@ -1268,7 +1269,7 @@ class YatConvTranspose3D(SingleInputSavedModelMixin, tf.Module):
         output_padding: Optional[Union[int, Tuple[int, int, int]]] = None,
     ):
         super().__init__(name=name)
-        self.filters = filters
+        self.filters = validate_positive_int(filters, "filters")
         self.kernel_size = (
             kernel_size
             if isinstance(kernel_size, (list, tuple))

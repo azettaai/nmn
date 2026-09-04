@@ -24,6 +24,7 @@ import mlx.nn as nn
 import numpy as np
 
 from nmn._epsilon import validate_epsilon
+from nmn._validation import validate_positive_int, validate_rate
 
 from .attention import yat_attention_weights
 
@@ -222,6 +223,10 @@ class RotaryYatAttention(nn.Module):
         epsilon: float = 1e-5,
         dtype: mx.Dtype = mx.float32,
     ) -> None:
+        embed_dim = validate_positive_int(embed_dim, "embed_dim")
+        num_heads = validate_positive_int(num_heads, "num_heads")
+        max_seq_len = validate_positive_int(max_seq_len, "max_seq_len")
+        dropout = validate_rate(dropout, "dropout")
         super().__init__()
         if embed_dim % num_heads != 0:
             raise ValueError(

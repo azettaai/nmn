@@ -40,6 +40,7 @@ from flax.typing import Dtype, PrecisionLike
 from jax import Array, random
 
 from nmn._attention_shape import validate_attention_inputs
+from nmn._validation import validate_rate
 from nmn.nnx.layers._numerics import fp32_if_low_precision
 from nmn.nnx.layers.squashers import softermax
 
@@ -102,6 +103,7 @@ def yat_attention_weights(
     Returns:
         Attention weights of shape [..., num_heads, q_length, kv_length]
     """
+    dropout_rate = validate_rate(dropout_rate, "dropout_rate")
     query, key = promote_dtype((query, key), dtype=dtype)
     dtype = query.dtype
 
@@ -326,6 +328,7 @@ def yat_attention_normalized(
     Returns:
         Output of shape [..., q_length, num_heads, v_dim].
     """
+    dropout_rate = validate_rate(dropout_rate, "dropout_rate")
     query, key, value = promote_dtype((query, key, value), dtype=dtype)
     dtype = query.dtype
 
@@ -495,6 +498,7 @@ def yat_performer_attention(
     Returns:
         Output of shape [..., q_length, num_heads, v_dim].
     """
+    dropout_rate = validate_rate(dropout_rate, "dropout_rate")
     query, key, value = promote_dtype((query, key, value), dtype=dtype)
     dtype = query.dtype
 

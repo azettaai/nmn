@@ -35,6 +35,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from nmn._epsilon import validate_epsilon
+from nmn._validation import validate_positive_int, validate_rate
 
 from ._epsilon import make_epsilon_parameter
 from ._yat_core import yat_score
@@ -239,10 +240,9 @@ class _YatConvBase(nn.Module):
         if self._ndim == 0:
             raise TypeError("_YatConvBase is not meant to be instantiated directly")
         epsilon = validate_epsilon(epsilon)
-        if groups < 1:
-            raise ValueError(f"groups must be >= 1, got {groups}")
-        if not 0.0 <= drop_rate < 1.0:
-            raise ValueError(f"drop_rate must be in [0, 1), got {drop_rate}")
+        filters = validate_positive_int(filters, "filters")
+        groups = validate_positive_int(groups, "groups")
+        drop_rate = validate_rate(drop_rate, "drop_rate")
 
         self.filters = filters
         self.kernel_size = _as_tuple(kernel_size, self._ndim)
@@ -487,8 +487,8 @@ class _YatConvTransposeBase(nn.Module):
                 "_YatConvTransposeBase is not meant to be instantiated directly"
             )
         epsilon = validate_epsilon(epsilon)
-        if not 0.0 <= drop_rate < 1.0:
-            raise ValueError(f"drop_rate must be in [0, 1), got {drop_rate}")
+        filters = validate_positive_int(filters, "filters")
+        drop_rate = validate_rate(drop_rate, "drop_rate")
 
         self.filters = filters
         self.kernel_size = _as_tuple(kernel_size, self._ndim)
