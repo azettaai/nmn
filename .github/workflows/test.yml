@@ -289,7 +289,7 @@ jobs:
     name: Enforce combined and changed-line coverage
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [test-jax, test-torch, test-keras, test-mlx]
+    needs: [test-jax, test-torch, test-keras, conformance-linux, test-mlx]
 
     steps:
     - uses: actions/checkout@v7
@@ -327,6 +327,12 @@ jobs:
       uses: actions/download-artifact@v8
       with:
         name: coverage-mlx
+        path: coverage-data
+
+    - name: Download conformance coverage
+      uses: actions/download-artifact@v8
+      with:
+        name: coverage-conformance
         path: coverage-data
 
     - name: Enforce 70% combined project coverage
@@ -406,11 +412,24 @@ jobs:
         pip check
 
     - name: Require every declared Linux backend and execution mode
-      run: pytest tests/conformance -v
+      run: >-
+        pytest tests/conformance -v
+        --cov=nmn --cov-report=xml:coverage-conformance.xml
       env:
         JAX_PLATFORM_NAME: cpu
         NMN_CONFORMANCE_PLATFORM: linux
         NMN_CONFORMANCE_ALL_MODES: "1"
+
+    - name: Stage conformance coverage data
+      run: cp .coverage .coverage.conformance
+
+    - name: Preserve conformance coverage for the local policy gate
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage-conformance
+        path: .coverage.conformance
+        include-hidden-files: true
+        if-no-files-found: error
 
     - name: Create canonical Apple fixture
       run: python -m tests.conformance.make_fixture dense-v1.npz
