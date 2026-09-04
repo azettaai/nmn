@@ -609,11 +609,11 @@ def render_support_markdown(contract: Mapping[str, Any] | None = None) -> str:
             "## API evidence scope",
             "",
             "Every convolution capability must name both its oracle-tested `api` "
-            "and its untested `declared_api` symbols; contract validation fails if "
+            + "and its untested `declared_api` symbols; contract validation fails if "
             "either scope is absent.",
             "",
             "The 1D convolution symbols below are covered by the exact oracle profiles. "
-            "The 2D and 3D symbols are public APIs but remain declared until matching "
+            + "The 2D and 3D symbols are public APIs but remain declared until matching "
             "rank-specific profiles are added.",
             "",
         ]

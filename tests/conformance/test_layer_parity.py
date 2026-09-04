@@ -43,6 +43,7 @@ def _adapter_or_skip(backend_name, backend):
     if backend["required_in_ci"] and backend["ci_platform"] == platform:
         pytest.fail(f"required {platform} backend is unavailable: {backend_name}")
     pytest.skip(f"backend unavailable on this platform: {backend_name}")
+    raise AssertionError("pytest.skip unexpectedly returned")
 
 
 def _convolution_cases():

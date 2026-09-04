@@ -25,7 +25,7 @@ class Adapter(Protocol):
     @staticmethod
     def available() -> bool:
         """Return whether the backend runtime can be used."""
-        ...
+        raise NotImplementedError
 
     @staticmethod
     def dense(
@@ -35,28 +35,28 @@ class Adapter(Protocol):
         configuration: DenseConfiguration | None = None,
     ) -> np.ndarray:
         """Run the canonical dense case."""
-        ...
+        raise NotImplementedError
 
     @staticmethod
     def dense_value_and_grad(
         case: DenseCase, *, compiled: bool = False
     ) -> OracleResult:
         """Run dense and differentiate its canonical cotangent projection."""
-        ...
+        raise NotImplementedError
 
     @staticmethod
     def attention_value_and_grad(
         case: AttentionCase, *, compiled: bool = False
     ) -> AttentionResult:
         """Run masked attention and differentiate its canonical projection."""
-        ...
+        raise NotImplementedError
 
     @staticmethod
     def linear_attention_value_and_grad(
         case: LinearAttentionCase, *, compiled: bool = False
     ) -> LinearAttentionResult:
         """Run fixed-projection MAY/RAY and differentiate q/k/v only."""
-        ...
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
