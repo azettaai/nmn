@@ -312,6 +312,38 @@ def test_goat_fully_masked_rows_have_zero_finite_vjp():
         np.testing.assert_array_equal(np.array(gradient), np.zeros(gradient.shape))
 
 
+@pytest.mark.parametrize("dtype", [mx.float16, mx.bfloat16])
+def test_goat_raw_softplus_compiled_low_precision_vjp_on_metal(dtype, mlx_gpu):
+    del mlx_gpu
+    values = mx.array([[[[0.1, 0.2]], [[0.5, -0.2]], [[-0.4, 0.2]]]], dtype=dtype)
+    b = mlx_nn.softplus(mx.zeros((1,), dtype=dtype))
+    epsilon_raw = mx.array([-46.0517], dtype=mx.float32)
+    cotangent = mx.array([[[[0.2, -0.4, 0.7]]]], dtype=dtype)
+
+    def loss(raw):
+        weights = goat_yat_attention_weights(
+            values,
+            values,
+            b,
+            mlx_nn.softplus(raw),
+            self_mask=False,
+        )
+        return mx.sum((weights.astype(dtype) * cotangent).astype(mx.float32))
+
+    eager_gradient = mx.grad(loss)(epsilon_raw)
+    compiled_gradient = mx.compile(mx.grad(loss))(epsilon_raw)
+    mx.eval(eager_gradient, compiled_gradient)
+    for gradient in (eager_gradient, compiled_gradient):
+        assert np.isfinite(np.array(gradient)).all()
+        assert np.abs(np.array(gradient)).max() > 0.0
+    np.testing.assert_allclose(
+        np.array(compiled_gradient),
+        np.array(eager_gradient),
+        rtol=2e-2,
+        atol=2e-6,
+    )
+
+
 @pytest.mark.parametrize("dtype", [mx.float16, mx.bfloat16, mx.float32])
 @pytest.mark.parametrize("epsilon", EPSILONS)
 @pytest.mark.parametrize("compiled", [False, True])

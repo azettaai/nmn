@@ -134,7 +134,12 @@ def goat_yat_attention_weights(
         numerator = mx.where(eligible, numerator, mx.zeros_like(numerator))
 
     row_scale = mx.stop_gradient(mx.min(denominator, axis=-1, keepdims=True))
-    scores = numerator * (row_scale / denominator)
+    # Do not spell this ratio as division.  Its quotient VJP may evaluate
+    # ``row_scale / denominator**2``; for epsilon=1e-20 the square underflows
+    # on Metal before the algebraically finite ratio can be recovered.  The
+    # log-domain identity only requires ``1 / denominator`` in its VJP.
+    denominator_ratio = mx.exp(mx.log(row_scale) - mx.log(denominator))
+    scores = numerator * denominator_ratio
     row_sum = mx.sum(scores, axis=-1, keepdims=True)
     # The additive indicator preserves the documented zero result for a fully
     # masked row even when ``floor * row_scale`` underflows at the smallest
