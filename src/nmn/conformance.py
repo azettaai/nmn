@@ -182,6 +182,12 @@ def _validate_config(
     _require_keys(config, CONFIG_KEYS[operation_name], path, optional=optional)
     if config["case"] != CONFIG_CASES[operation_name]:
         raise ContractError(f"{path}.case must be {CONFIG_CASES[operation_name]!r}")
+    if operation_name in {"convolution", "transpose_convolution"}:
+        if config["spatial_rank"] != 1:
+            raise ContractError(
+                f"{path}.spatial_rank must be 1 for "
+                f"{CONFIG_CASES[operation_name]!r}"
+            )
     integer_keys = CONFIG_KEYS[operation_name] & {
         "in_features",
         "out_features",
@@ -491,11 +497,17 @@ def validate_contract(contract: Mapping[str, Any]) -> None:
         for operation_name in OPERATIONS:
             capability_path = f"{path}.operations.{operation_name}"
             capability = _mapping(backend_operations[operation_name], capability_path)
+            required_capability_keys = {"status", "conformance", "api"}
+            optional_capability_keys = {"limitations"}
+            if operation_name in {"convolution", "transpose_convolution"}:
+                required_capability_keys.add("declared_api")
+            else:
+                optional_capability_keys.add("declared_api")
             _require_keys(
                 capability,
-                {"status", "conformance", "api"},
+                required_capability_keys,
                 capability_path,
-                optional={"declared_api", "limitations"},
+                optional=optional_capability_keys,
             )
             status = _string(capability["status"], f"{capability_path}.status")
             conformance = _string(
@@ -594,6 +606,10 @@ def render_support_markdown(contract: Mapping[str, Any] | None = None) -> str:
         [
             "",
             "## API evidence scope",
+            "",
+            "Every convolution capability must name both its oracle-tested `api` "
+            "and its untested `declared_api` symbols; contract validation fails if "
+            "either scope is absent.",
             "",
             "The 1D convolution symbols below are covered by the exact oracle profiles. "
             "The 2D and 3D symbols are public APIs but remain declared until matching "

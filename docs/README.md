@@ -126,7 +126,7 @@ Most issues fall into one of these buckets:
 | ---------------------------------------- | ------------------------------------------------------------------------- |
 | `NaN` loss within first ~100 steps        | Bump `epsilon` from `1e-5` → `1e-3` (especially fp16/bf16)                |
 | Slow / no learning early                  | Add `use_alpha=True` or `constant_alpha=True`                              |
-| Numerical mismatch across frameworks      | Run `pytest tests/conformance/ -v` to confirm parity on your machine     |
+| Numerical mismatch across frameworks      | Run `pytest tests/conformance/ -v` to check the manifest's exact profiles |
 | Cannot install jax / version conflict     | Pin: `pip install "jax==0.9.1" "jaxlib==0.9.1" "flax==0.12.5"`            |
 | Cannot import `nmn.<framework>`          | Install the matching extra: `pip install "nmn[<framework>]"`              |
 

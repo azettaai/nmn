@@ -3,7 +3,7 @@
 <p align="center">
   <em>Activation-free neural layers that learn non-linearity through geometric operations.</em>
   <br>
-  <strong>One library. Six frameworks. Numerically equivalent.</strong>
+  <strong>One library. Six frameworks. Manifest-verified conformance.</strong>
 </p>
 
 <p align="center">
@@ -390,7 +390,7 @@ pip install "nmn[test]"
 
 pytest tests/                                      # everything
 pytest tests/test_torch/                           # one framework
-pytest tests/conformance/                          # cross-framework parity
+pytest tests/conformance/                          # manifest conformance profiles
 pytest tests/ -m "not slow"                        # skip slow tests
 pytest tests/ --cov=nmn --cov-report=html          # coverage report
 ```

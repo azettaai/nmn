@@ -134,6 +134,30 @@ def test_packaged_contract_is_valid_json_and_complete():
             "api and declared_api must not overlap",
         ),
         (
+            lambda value: value["backends"]["torch"]["operations"]["convolution"].pop(
+                "declared_api"
+            ),
+            "missing required keys: declared_api",
+        ),
+        (
+            lambda value: value["backends"]["nnx"]["operations"][
+                "transpose_convolution"
+            ].pop("declared_api"),
+            "missing required keys: declared_api",
+        ),
+        (
+            lambda value: value["profiles"]["torch"]["convolution"][
+                "config"
+            ].__setitem__("spatial_rank", 2),
+            "spatial_rank must be 1 for 'convolution_1d_valid_v1'",
+        ),
+        (
+            lambda value: value["profiles"]["mlx"]["transpose_convolution"][
+                "config"
+            ].__setitem__("spatial_rank", 3),
+            "spatial_rank must be 1 for 'transpose_convolution_1d_valid_v1'",
+        ),
+        (
             lambda value: value["profiles"]["torch"]["dense"].__setitem__("typo", True),
             "unexpected keys",
         ),
@@ -240,6 +264,15 @@ def test_convolution_oracle_claims_are_scoped_to_the_tested_spatial_rank():
             )
 
 
+@pytest.mark.parametrize("operation", ["convolution", "transpose_convolution"])
+def test_renderer_fails_closed_without_convolution_declared_api(operation):
+    contract = copy.deepcopy(load_contract())
+    contract["backends"]["torch"]["operations"][operation].pop("declared_api")
+
+    with pytest.raises(ContractError, match="missing required keys: declared_api"):
+        render_support_markdown(contract)
+
+
 def test_apple_fixture_evidence_names_the_ci_generated_artifact():
     contract = load_contract()
     assert (
@@ -298,3 +331,7 @@ assert KerasAdapter.available() is False
 def test_generated_support_document_is_current():
     expected = (ROOT / "docs" / "generated" / "conformance.md").read_text()
     assert expected == render_support_markdown()
+    website_copy = (
+        ROOT / "website" / "docusaurus" / "docs" / "conformance.md"
+    ).read_text()
+    assert website_copy == expected

@@ -3,7 +3,7 @@
 The suite is organized by the boundary it verifies:
 
 - `test_<backend>/` — backend-specific unit and regression tests;
-- `conformance/` — generated cross-framework numerical parity;
+- `conformance/` — manifest-driven NumPy-oracle and fixture conformance;
 - `integration/` — package-level behavior spanning multiple components;
 - `benchmarks/` — small performance assertions that are safe in CI;
 - `test_cli.py` — import-light command-line behavior;
