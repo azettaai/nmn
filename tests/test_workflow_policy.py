@@ -170,7 +170,8 @@ def test_release_and_deployment_permissions_are_job_scoped_and_bounded():
     assert "id-token: write" not in deploy_build
     assert deploy.count("id-token: write") == 1
     assert publish.count("timeout-minutes:") == 3
-    assert deploy.count("timeout-minutes:") == 2
+    assert deploy.count("timeout-minutes:") == 1
+    assert (WORKFLOWS / "website.yml").read_text().count("timeout-minutes:") == 1
     assert mirror.count("timeout-minutes:") == 1
 
 
@@ -390,13 +391,39 @@ def test_website_is_built_on_pull_requests_with_node24():
     assert "npm ci" in workflow
     assert "bash website/prepare-docusaurus-static.sh" in workflow
     assert "npm run build" in workflow
+    assert "workflow_call:" in workflow
 
     config = (DOCUSAURUS / "docusaurus.config.js").read_text()
     assert "onBrokenLinks: 'throw'" in config
     assert "onBrokenMarkdownLinks: 'throw'" in config
 
     deploy_workflow = (WORKFLOWS / "deploy.yml").read_text()
-    assert "bash website/prepare-docusaurus-static.sh" in deploy_workflow
+    assert "uses: ./.github/workflows/website.yml" in deploy_workflow
+
+
+def test_deployment_consumes_the_fail_closed_audited_website_artifact():
+    website = (WORKFLOWS / "website.yml").read_text()
+    deploy = (WORKFLOWS / "deploy.yml").read_text()
+    build_steps = website.split("    steps:", 1)[1]
+
+    audit = build_steps.index("run: npm run audit:ci")
+    prepare = build_steps.index("run: bash website/prepare-docusaurus-static.sh")
+    build = build_steps.index("run: npm run build")
+    upload = build_steps.index("uses: actions/upload-pages-artifact@v5")
+
+    assert audit < prepare < build < upload
+    assert "cache-dependency-path: website/docusaurus/package-lock.json" in website
+    assert "continue-on-error" not in build_steps
+    assert "if: always()" not in build_steps
+
+    deploy_build = deploy.split("  build:", 1)[1].split("\n  deploy:", 1)[0]
+    deploy_job = deploy.split("\n  deploy:", 1)[1]
+    assert "uses: ./.github/workflows/website.yml" in deploy_build
+    assert "needs: build" in deploy_job
+    assert "npm ci" not in deploy
+    assert "npm run build" not in deploy
+    assert "actions/upload-pages-artifact" not in deploy
+    assert "'.github/workflows/website.yml'" in deploy
 
 
 def test_website_manifest_and_lockfile_use_coherent_versions():
