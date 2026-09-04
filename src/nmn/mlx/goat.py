@@ -47,6 +47,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from nmn._epsilon import validate_epsilon
+from nmn._validation import validate_positive_int
 
 from ._epsilon import make_epsilon_parameter
 
@@ -195,6 +196,8 @@ class GoatYatAttention(nn.Module):
         epsilon: float = 1.0,
         dtype: mx.Dtype = mx.float32,
     ):
+        embed_dim = validate_positive_int(embed_dim, "embed_dim")
+        num_heads = validate_positive_int(num_heads, "num_heads")
         super().__init__()
         if embed_dim % num_heads != 0:
             raise ValueError(

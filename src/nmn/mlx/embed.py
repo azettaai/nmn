@@ -15,6 +15,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from nmn._epsilon import validate_epsilon
+from nmn._validation import validate_positive_int
 
 from ._precision import reduction_safe_upcast, saturating_downcast
 
@@ -53,6 +54,8 @@ class YatEmbed(nn.Module):
         weight_normalized: bool = False,
         dtype: mx.Dtype = mx.float32,
     ) -> None:
+        num_embeddings = validate_positive_int(num_embeddings, "num_embeddings")
+        features = validate_positive_int(features, "features")
         super().__init__()
         epsilon = validate_epsilon(epsilon)
 

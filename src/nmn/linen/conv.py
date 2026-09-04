@@ -17,6 +17,7 @@ from nmn._epsilon import (
     validate_epsilon,
     validate_epsilon_for_dtype,
 )
+from nmn._validation import validate_positive_int
 
 from ._yat_core import safe_kernel_init, upcast_yat_operands, yat_score
 
@@ -34,8 +35,9 @@ def _validate_feature_groups(
     input_channels: int, output_channels: int, feature_group_count: int
 ) -> None:
     """Validate grouped-convolution channel partitions with clear errors."""
-    if feature_group_count <= 0:
-        raise ValueError("feature_group_count must be a positive integer.")
+    validate_positive_int(input_channels, "input_channels")
+    validate_positive_int(output_channels, "features")
+    validate_positive_int(feature_group_count, "feature_group_count")
     if input_channels % feature_group_count != 0:
         raise ValueError(
             f"Input channels ({input_channels}) must be divisible by "
@@ -54,6 +56,9 @@ class _EpsilonValidatedModule(Module):
     def __post_init__(self) -> None:
         super().__post_init__()
         validate_epsilon(self.epsilon)
+        validate_positive_int(self.features, "features")
+        if hasattr(self, "feature_group_count"):
+            validate_positive_int(self.feature_group_count, "feature_group_count")
 
 
 class YatConv1D(_EpsilonValidatedModule):

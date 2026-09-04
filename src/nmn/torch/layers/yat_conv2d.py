@@ -12,6 +12,8 @@ from torch.nn import functional as F
 from torch.nn.common_types import _size_2_t
 from torch.nn.parameter import Parameter
 
+from nmn._validation import validate_positive_int, validate_rate
+
 from ..kernel_bank import KernelBank
 from ._yat_conv_core import (
     apply_preserving_epsilon_dtype,
@@ -85,6 +87,10 @@ class YatConv2D(Conv2d):
         param_dtype=None,
         kernel_bank: Optional[KernelBank] = None,
     ) -> None:
+        in_channels = validate_positive_int(in_channels, "in_channels")
+        out_channels = validate_positive_int(out_channels, "out_channels")
+        groups = validate_positive_int(groups, "groups")
+        drop_rate = validate_rate(drop_rate, "drop_rate")
         storage_dtype = param_dtype if param_dtype is not None else dtype
 
         # Validate groups upfront so errors surface at construction time

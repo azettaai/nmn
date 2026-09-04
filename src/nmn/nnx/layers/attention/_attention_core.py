@@ -39,6 +39,7 @@ from flax import nnx
 from flax.nnx.module import Module
 from jax import Array, random
 
+from nmn._validation import validate_rate
 from nmn.nnx.layers.squashers import softermax
 
 SUPPORTED_ATTENTION_NORMALIZATIONS = ("softmax", "l1", "softermax")
@@ -103,7 +104,7 @@ def finalize_attention_weights(
         Normalized attention weights of the same shape, cast to ``dtype``.
     """
     validate_attention_normalization(normalization)
-
+    dropout_rate = validate_rate(dropout_rate, "dropout_rate")
     if alpha is not None:
         attn_weights = attn_weights * alpha
 

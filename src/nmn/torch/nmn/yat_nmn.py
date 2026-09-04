@@ -17,6 +17,7 @@ from nmn._epsilon import (
     validate_epsilon_for_dtype,
 )
 from nmn._kernel_bank import initializer_signature
+from nmn._validation import validate_positive_int
 
 from .._precision import saturating_downcast, saturating_upcast
 from ..kernel_bank import KernelBank
@@ -119,6 +120,8 @@ class YatNMN(nn.Module):
         device=None,
         kernel_bank: Optional[KernelBank] = None,
     ):
+        in_features = validate_positive_int(in_features, "in_features")
+        out_features = validate_positive_int(out_features, "out_features")
         super().__init__()
 
         # Store attributes

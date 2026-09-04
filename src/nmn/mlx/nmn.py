@@ -21,6 +21,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from nmn._epsilon import validate_epsilon
+from nmn._validation import validate_positive_int, validate_rate
 
 from ._epsilon import make_epsilon_parameter
 from ._precision import saturating_downcast
@@ -102,8 +103,8 @@ class YatNMN(nn.Module):
     ) -> None:
         super().__init__()
         epsilon = validate_epsilon(epsilon)
-        if not 0.0 <= drop_rate < 1.0:
-            raise ValueError(f"drop_rate must be in [0, 1), got {drop_rate}")
+        features = validate_positive_int(features, "features")
+        drop_rate = validate_rate(drop_rate, "drop_rate")
 
         # ``freeze_kernel`` is an alias for ``lazy``; either enables lazy mode.
         self.lazy = bool(lazy) or bool(freeze_kernel)

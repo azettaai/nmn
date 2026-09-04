@@ -28,6 +28,7 @@ from flax.typing import (
 from jax import lax
 
 from nmn._conv_transpose import canonical_jax_transpose_padding
+from nmn._validation import validate_positive_int, validate_rate
 
 from .._numerics import finite_cast, fp32_if_low_precision, inverse_softplus
 from .utils import (
@@ -139,11 +140,9 @@ class YatConvTranspose(Module):
         drop_rate: float = 0.0,
         rngs: rnglib.Rngs,
     ):
-        if not 0.0 <= drop_rate < 1.0:
-            raise ValueError(
-                "drop_rate must be in the half-open interval [0, 1), "
-                f"got {drop_rate}"
-            )
+        in_features = validate_positive_int(in_features, "in_features")
+        out_features = validate_positive_int(out_features, "out_features")
+        drop_rate = validate_rate(drop_rate, "drop_rate")
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size,)
         else:

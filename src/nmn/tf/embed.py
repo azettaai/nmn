@@ -11,6 +11,8 @@ from typing import Optional, Union
 
 import tensorflow as tf
 
+from nmn._validation import validate_positive_int
+
 from ._precision import reduction_safe_upcast, saturating_downcast
 from .saved_model import ExportPath, export_embedding
 
@@ -50,6 +52,8 @@ class YatEmbed(tf.Module):
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None,
     ):
+        num_embeddings = validate_positive_int(num_embeddings, "num_embeddings")
+        features = validate_positive_int(features, "features")
         super().__init__(name=name)
         self.num_embeddings = num_embeddings
         self.features = features
