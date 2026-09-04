@@ -90,7 +90,7 @@ class ModernTransformerBlock(nnx.Module):
     ):
         if mesh is not None:
             kernel_init = nnx.with_partitioning(
-                nnx.initializers.xavier_uniform(), NamedSharding(mesh, P(None, "model"))
+                nnx.initializers.xavier_uniform(), P(None, "model"), mesh=mesh
             )
         else:
             kernel_init = nnx.initializers.xavier_uniform()
