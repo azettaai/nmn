@@ -14,6 +14,8 @@ from typing import Optional, Union
 import mlx.core as mx
 import mlx.nn as nn
 
+from nmn._epsilon import validate_epsilon
+
 from ._precision import reduction_safe_upcast, saturating_downcast
 
 __all__ = ["YatEmbed"]
@@ -52,8 +54,7 @@ class YatEmbed(nn.Module):
         dtype: mx.Dtype = mx.float32,
     ) -> None:
         super().__init__()
-        if epsilon <= 0:
-            raise ValueError(f"epsilon must be positive, got {epsilon}")
+        epsilon = validate_epsilon(epsilon)
 
         self.num_embeddings = num_embeddings
         self.features = features

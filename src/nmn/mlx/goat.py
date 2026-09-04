@@ -41,11 +41,14 @@ Mask convention matches the rest of ``nmn.mlx``: ``True`` = attend,
 
 from __future__ import annotations
 
-import math
 from typing import Optional
 
 import mlx.core as mx
 import mlx.nn as nn
+
+from nmn._epsilon import validate_epsilon
+
+from ._epsilon import make_epsilon_parameter
 
 __all__ = [
     "goat_yat_attention_weights",
@@ -120,6 +123,7 @@ def goat_yat_attention(
     """
     w = goat_yat_attention_weights(q, k, b, eps, mask=mask, self_mask=self_mask)
     vh = mx.transpose(v, (0, 2, 1, 3))  # (B, H, Lk, D)
+    w = w.astype(vh.dtype)
     out = w @ vh  # (B, H, Lq, D)
     return mx.transpose(out, (0, 2, 1, 3))  # (B, Lq, H, D)
 
@@ -158,8 +162,7 @@ class GoatYatAttention(nn.Module):
             )
         if variant not in ("v", "nov"):
             raise ValueError(f"variant must be 'v' or 'nov', got {variant!r}")
-        if epsilon <= 0:
-            raise ValueError(f"epsilon must be positive, got {epsilon}")
+        epsilon = validate_epsilon(epsilon)
 
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -171,9 +174,8 @@ class GoatYatAttention(nn.Module):
 
         # Per-head learnable (b, eps), softplus-reparameterised.
         # b_raw = 0 -> softplus(0) = log 2; eps_raw chosen so softplus = epsilon.
-        raw_eps = math.log(math.exp(epsilon) - 1.0)
         self.b_raw = mx.zeros((num_heads,), dtype=dtype)
-        self.eps_raw = mx.full((num_heads,), raw_eps, dtype=dtype)
+        self.eps_raw = make_epsilon_parameter(epsilon, dtype, (num_heads,))
 
         scale = embed_dim**-0.5
         if variant == "v":
