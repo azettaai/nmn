@@ -20,6 +20,7 @@ from nmn.mlx import (  # noqa: E402
     YatConvTranspose3D,
     YatEmbed,
     YatNMN,
+    goat_yat_attention_weights,
 )
 
 EPSILONS = (1e-20, 1e-5, 1000.0)
@@ -61,16 +62,23 @@ def _evaluate(layer, inputs, compiled):
 
         def evaluate(values):
             value, parameter_gradients = grad_fn(layer, values)
-            return value, parameter_gradients, input_grad_fn(values)
+            effective_epsilon = mlx_nn.softplus(layer.epsilon_param)
+            return (
+                value,
+                parameter_gradients,
+                input_grad_fn(values),
+                effective_epsilon,
+            )
 
-        (_, output), gradients, input_gradient = mx.compile(
+        (_, output), gradients, input_gradient, effective_epsilon = mx.compile(
             evaluate, inputs=layer.state
         )(inputs)
     else:
         (_, output), gradients = grad_fn(layer, inputs)
         input_gradient = input_grad_fn(inputs)
-    mx.eval(output, gradients, input_gradient)
-    return output, gradients, input_gradient
+        effective_epsilon = mlx_nn.softplus(layer.epsilon_param)
+    mx.eval(output, gradients, input_gradient, effective_epsilon)
+    return output, gradients, input_gradient, effective_epsilon
 
 
 @pytest.mark.parametrize("layer_cls,kernel_size,input_shape", FAMILIES)
@@ -80,12 +88,10 @@ def test_learnable_epsilon_eager_compile_and_gradients(
     layer_cls, kernel_size, input_shape, epsilon, compiled
 ):
     layer = _make(layer_cls, kernel_size, epsilon)
-    output, gradients, input_gradient = _evaluate(
+    output, gradients, input_gradient, effective = _evaluate(
         layer, mx.full(input_shape, 0.2, dtype=mx.float32), compiled
     )
 
-    effective = mlx_nn.softplus(layer.epsilon_param)
-    mx.eval(effective)
     np.testing.assert_allclose(np.array(effective), epsilon, rtol=2e-6, atol=0.0)
     assert np.isfinite(np.array(output)).all()
     assert np.isfinite(np.array(input_gradient)).all()
@@ -135,7 +141,7 @@ def test_epsilon_parameter_storage_dtype_and_representability(
     mx.eval(effective)
     np.testing.assert_allclose(np.array(effective), epsilon, rtol=2e-6, atol=0.0)
     if dtype in (mx.float16, mx.bfloat16):
-        output, gradients, input_gradient = _evaluate(layer, inputs, False)
+        output, gradients, input_gradient, _ = _evaluate(layer, inputs, False)
         assert output.dtype == dtype
         assert np.isfinite(np.array(output.astype(mx.float32))).all()
         assert np.isfinite(np.array(input_gradient.astype(mx.float32))).all()
@@ -186,10 +192,10 @@ def test_dtype_extremes_eager_compile_and_metal(dtype, epsilon, mlx_gpu):
     del mlx_gpu
     layer = _make(YatNMN, None, epsilon, dtype)
     inputs = mx.full((1, 2), 0.2, dtype=dtype)
-    eager_output, eager_gradients, eager_input_gradient = _evaluate(
+    eager_output, eager_gradients, eager_input_gradient, _ = _evaluate(
         layer, inputs, False
     )
-    compiled_output, compiled_gradients, compiled_input_gradient = _evaluate(
+    compiled_output, compiled_gradients, compiled_input_gradient, _ = _evaluate(
         layer, inputs, True
     )
 
@@ -211,6 +217,101 @@ def test_dtype_extremes_eager_compile_and_metal(dtype, epsilon, mlx_gpu):
     )
 
 
+def _direct_goat_weights(q, k, b, epsilon, mask, floor):
+    qh = mx.transpose(q, (0, 2, 1, 3))
+    kh = mx.transpose(k, (0, 2, 1, 3))
+    dot = qh @ mx.swapaxes(kh, -1, -2)
+    q_norm = mx.sum(qh * qh, axis=-1, keepdims=True)
+    k_norm = mx.sum(kh * kh, axis=-1, keepdims=True)
+    distance = mx.maximum(q_norm + mx.swapaxes(k_norm, -1, -2) - 2.0 * dot, 0.0)
+    scores = (dot + b.reshape(1, -1, 1, 1)) ** 2 / (
+        distance + epsilon.reshape(1, -1, 1, 1)
+    )
+    if mask is not None:
+        scores = scores * mask.astype(scores.dtype)
+    return scores / (mx.sum(scores, axis=-1, keepdims=True) + floor)
+
+
+@pytest.mark.parametrize("mask_kind", ["unmasked", "partial"])
+def test_goat_stable_normalization_matches_direct_forward_and_vjp(mask_kind):
+    q = mx.array([[[[0.1, 0.2]], [[0.5, -0.2]]]], dtype=mx.float32)
+    k = mx.array([[[[0.2, -0.1]], [[-0.4, 0.2]], [[0.3, 0.6]]]], dtype=mx.float32)
+    b = mx.array([0.7], dtype=mx.float32)
+    epsilon = mx.array([0.3], dtype=mx.float32)
+    mask = None
+    if mask_kind == "partial":
+        mask = mx.array([[[[True, False, True], [False, True, True]]]])
+    floor = 3e-3
+    cotangent = mx.array([[[[0.2, -0.4, 0.7], [-0.3, 0.5, 0.1]]]])
+
+    def actual_loss(q, k, b, epsilon):
+        weights = goat_yat_attention_weights(
+            q, k, b, epsilon, mask=mask, self_mask=False, floor=floor
+        )
+        return mx.sum(weights * cotangent)
+
+    def reference_loss(q, k, b, epsilon):
+        weights = _direct_goat_weights(q, k, b, epsilon, mask, floor)
+        return mx.sum(weights * cotangent)
+
+    actual = goat_yat_attention_weights(
+        q, k, b, epsilon, mask=mask, self_mask=False, floor=floor
+    )
+    expected = _direct_goat_weights(q, k, b, epsilon, mask, floor)
+    actual_value, actual_gradients = mx.value_and_grad(
+        actual_loss, argnums=(0, 1, 2, 3)
+    )(q, k, b, epsilon)
+    expected_value, expected_gradients = mx.value_and_grad(
+        reference_loss, argnums=(0, 1, 2, 3)
+    )(q, k, b, epsilon)
+    mx.eval(
+        actual,
+        expected,
+        actual_value,
+        expected_value,
+        actual_gradients,
+        expected_gradients,
+    )
+
+    np.testing.assert_allclose(
+        np.array(actual), np.array(expected), rtol=2e-6, atol=1e-7
+    )
+    np.testing.assert_allclose(
+        np.array(actual_value), np.array(expected_value), rtol=2e-6, atol=1e-7
+    )
+    for actual_gradient, expected_gradient in zip(
+        actual_gradients, expected_gradients, strict=True
+    ):
+        np.testing.assert_allclose(
+            np.array(actual_gradient),
+            np.array(expected_gradient),
+            rtol=2e-5,
+            atol=2e-6,
+        )
+
+
+def test_goat_fully_masked_rows_have_zero_finite_vjp():
+    q = mx.array([[[[0.1, 0.2]], [[0.5, -0.2]]]], dtype=mx.float32)
+    k = mx.array([[[[0.2, -0.1]], [[-0.4, 0.2]], [[0.3, 0.6]]]], dtype=mx.float32)
+    b = mx.array([0.7], dtype=mx.float32)
+    epsilon = mx.array([1e-20], dtype=mx.float32)
+    mask = mx.zeros((1, 1, 2, 3), dtype=mx.bool_)
+
+    def loss(q, k, b, epsilon):
+        weights = goat_yat_attention_weights(
+            q, k, b, epsilon, mask=mask, self_mask=False
+        )
+        return mx.sum(weights)
+
+    weights = goat_yat_attention_weights(q, k, b, epsilon, mask=mask, self_mask=False)
+    _, gradients = mx.value_and_grad(loss, argnums=(0, 1, 2, 3))(q, k, b, epsilon)
+    mx.eval(weights, gradients)
+    np.testing.assert_array_equal(np.array(weights), np.zeros((1, 1, 2, 3)))
+    for gradient in gradients:
+        assert np.isfinite(np.array(gradient)).all()
+        np.testing.assert_array_equal(np.array(gradient), np.zeros(gradient.shape))
+
+
 @pytest.mark.parametrize("dtype", [mx.float16, mx.bfloat16, mx.float32])
 @pytest.mark.parametrize("epsilon", EPSILONS)
 @pytest.mark.parametrize("compiled", [False, True])
@@ -223,7 +324,6 @@ def test_goat_uses_stable_epsilon_parameter(dtype, epsilon, compiled):
     )
     expected_dtype = mx.float32 if dtype in (mx.float16, mx.bfloat16) else dtype
     assert layer.eps_raw.dtype == expected_dtype
-    effective = mlx_nn.softplus(layer.eps_raw)
     inputs = mx.array(
         [[[0.1, 0.2, -0.3, 0.4], [0.5, -0.2, 0.1, 0.3], [-0.4, 0.2, 0.6, 0.1]]],
         dtype=dtype,
@@ -235,11 +335,17 @@ def test_goat_uses_stable_epsilon_parameter(dtype, epsilon, compiled):
 
     grad_fn = mlx_nn.value_and_grad(layer, loss)
     if compiled:
-        (_, output), gradients = mx.compile(
-            lambda values: grad_fn(layer, values), inputs=layer.state
-        )(inputs)
+
+        def evaluate(values):
+            value, gradients = grad_fn(layer, values)
+            return value, gradients, mlx_nn.softplus(layer.eps_raw)
+
+        (_, output), gradients, effective = mx.compile(evaluate, inputs=layer.state)(
+            inputs
+        )
     else:
         (_, output), gradients = grad_fn(layer, inputs)
+        effective = mlx_nn.softplus(layer.eps_raw)
     mx.eval(effective, output, gradients)
     np.testing.assert_allclose(np.array(effective), epsilon, rtol=2e-6, atol=0.0)
     assert output.dtype == dtype

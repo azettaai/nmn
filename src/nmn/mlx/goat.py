@@ -97,15 +97,50 @@ def goat_yat_attention_weights(
     Returns:
         ``(B, H, Lq, Lk)`` row-stochastic weights.
     """
-    qh = mx.transpose(q, (0, 2, 1, 3))  # (B, H, Lq, D)
-    kh = mx.transpose(k, (0, 2, 1, 3))  # (B, H, Lk, D)
-    scores = _yat_scores(qh, kh, b, eps)  # (B, H, Lq, Lk) >= 0
-    if self_mask and scores.shape[-2] == scores.shape[-1]:
-        n = scores.shape[-1]
-        scores = scores * (1.0 - mx.eye(n, dtype=scores.dtype))[None, None]
+    # Normalising ``numerator / denominator`` directly is numerically unsafe
+    # for tiny learned epsilons: its backward materialises ``1 / eps**2``
+    # before the softplus chain rule can cancel the overflow.  Multiplying all
+    # scores in a row by the same positive scale is algebraically neutral.  A
+    # detached minimum denominator keeps every ratio at most one and bounds the
+    # reciprocal in the backward pass by ``1 / eps`` instead.
+    # ``mx.result_type`` is newer than NMN's minimum supported MLX.  Learned
+    # low-precision epsilon parameters are stored in float32, so this explicit
+    # promotion covers the stability path without raising the MLX floor.
+    compute_dtype = (
+        mx.float32 if mx.float32 in (q.dtype, k.dtype, b.dtype, eps.dtype) else q.dtype
+    )
+    qh = mx.transpose(q, (0, 2, 1, 3)).astype(compute_dtype)
+    kh = mx.transpose(k, (0, 2, 1, 3)).astype(compute_dtype)
+    b = b.astype(compute_dtype).reshape(1, -1, 1, 1)
+    eps = eps.reshape(1, -1, 1, 1)
+    dot = qh @ mx.swapaxes(kh, -1, -2)
+    qn = mx.sum(qh * qh, axis=-1, keepdims=True)
+    kn = mx.sum(kh * kh, axis=-1, keepdims=True)
+    dist2 = mx.maximum(qn + mx.swapaxes(kn, -1, -2) - 2.0 * dot, 0.0)
+    denominator = dist2 + eps
+    numerator = (dot + b) ** 2
+
+    eligible = None
+    if self_mask and denominator.shape[-2] == denominator.shape[-1]:
+        n = denominator.shape[-1]
+        eligible = (mx.eye(n, dtype=compute_dtype) == 0)[None, None]
     if mask is not None:
-        scores = scores * mask.astype(scores.dtype)
-    return scores / (mx.sum(scores, axis=-1, keepdims=True) + floor)
+        mask = mask.astype(mx.bool_)
+        eligible = mask if eligible is None else eligible & mask
+    if eligible is not None:
+        # Excluded entries must not traverse even a finite-but-extreme ratio:
+        # multiplying an infinite cotangent by a later zero mask is still NaN.
+        denominator = mx.where(eligible, denominator, mx.ones_like(denominator))
+        numerator = mx.where(eligible, numerator, mx.zeros_like(numerator))
+
+    row_scale = mx.stop_gradient(mx.min(denominator, axis=-1, keepdims=True))
+    scores = numerator * (row_scale / denominator)
+    row_sum = mx.sum(scores, axis=-1, keepdims=True)
+    # The additive indicator preserves the documented zero result for a fully
+    # masked row even when ``floor * row_scale`` underflows at the smallest
+    # supported fp32 epsilon.  It is zero for every nonempty row.
+    empty_row = (row_sum == 0).astype(scores.dtype)
+    return scores / (row_sum + floor * row_scale + empty_row)
 
 
 def goat_yat_attention(
