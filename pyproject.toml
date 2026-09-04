@@ -120,6 +120,7 @@ strict_equality = true
 
 [tool.coverage.run]
 source = ["src/nmn"]
+relative_files = true
 omit = ["*/tests/*", "*/examples/*", "*/__pycache__/*", "*/_version.py"]
 
 [tool.coverage.report]
