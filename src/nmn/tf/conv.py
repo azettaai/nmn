@@ -98,9 +98,7 @@ def _adjust_transpose_same(value, adjustments):
     size.append(shape[-1])
     value = tf.slice(value, begin, size)
     paddings = [[0, 0]]
-    paddings.extend(
-        [[max(-low, 0), max(-high, 0)] for low, high in adjustments]
-    )
+    paddings.extend([[max(-low, 0), max(-high, 0)] for low, high in adjustments])
     paddings.append([0, 0])
     return tf.pad(value, paddings)
 

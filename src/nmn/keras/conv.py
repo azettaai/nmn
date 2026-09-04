@@ -189,7 +189,7 @@ def _conv_transpose_output_shape(layer, input_shape):
         rank = len(layer.kernel_size)
         channels_first = (layer.data_format or "channels_last") == "channels_first"
         spatial = input_shape[2:] if channels_first else input_shape[1:-1]
-        output_spatial = []
+        output_spatial: list[int | None] = []
         for axis, size in enumerate(spatial):
             if size is None:
                 output_spatial.append(None)

@@ -123,9 +123,7 @@ def test_conv_transpose_valid_stride_gap_shapes_and_gradients(
         use_bias=False,
         use_alpha=False,
     )
-    inputs = mx.reshape(
-        mx.linspace(-0.7, 0.9, int(np.prod(input_shape))), input_shape
-    )
+    inputs = mx.reshape(mx.linspace(-0.7, 0.9, int(np.prod(input_shape))), input_shape)
     output = layer(inputs)
     input_grad = mx.grad(lambda value: mx.sum(layer(value)))(inputs)
     _, parameter_grads = mlx_nn.value_and_grad(

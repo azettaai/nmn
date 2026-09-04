@@ -202,6 +202,8 @@ def test_canonical_valid_stride_gap_output_and_gradients(
 
 def test_canonical_dilation_and_same_output_padding():
     tf = pytest.importorskip("tensorflow")
+    if not tf.config.list_physical_devices("GPU"):
+        pytest.skip("TensorFlow CPU Conv2DBackpropInput does not support dilation > 1")
     from nmn.tf import YatConvTranspose1D
 
     valid = YatConvTranspose1D(

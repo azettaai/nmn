@@ -1,24 +1,20 @@
 """Runnable cross-framework tests for canonical ConvTranspose sizing."""
 
-import jax
-import jax.numpy as jnp
 import numpy as np
 import pytest
-import torch
-from flax import nnx
 
-from nmn.linen import (
-    YatConvTranspose1D as LinenTranspose1D,
-    YatConvTranspose2D as LinenTranspose2D,
-    YatConvTranspose3D as LinenTranspose3D,
-)
+jax = pytest.importorskip("jax")
+jnp = pytest.importorskip("jax.numpy")
+torch = pytest.importorskip("torch")
+nnx = pytest.importorskip("flax.nnx")
+
+from nmn.linen import YatConvTranspose1D as LinenTranspose1D
+from nmn.linen import YatConvTranspose2D as LinenTranspose2D
+from nmn.linen import YatConvTranspose3D as LinenTranspose3D
 from nmn.nnx import YatConvTranspose as NnxTranspose
-from nmn.torch import (
-    YatConvTranspose1D as TorchTranspose1D,
-    YatConvTranspose2D as TorchTranspose2D,
-    YatConvTranspose3D as TorchTranspose3D,
-)
-
+from nmn.torch import YatConvTranspose1D as TorchTranspose1D
+from nmn.torch import YatConvTranspose2D as TorchTranspose2D
+from nmn.torch import YatConvTranspose3D as TorchTranspose3D
 
 CASES = [
     (
@@ -121,9 +117,7 @@ def test_linen_nnx_canonical_same_output_and_gradient_parity_under_jit():
         use_alpha=False,
         epsilon=0.1,
     )
-    linen_apply = jax.jit(
-        lambda x, w: linen.apply({"params": {"kernel": w}}, x)
-    )
+    linen_apply = jax.jit(lambda x, w: linen.apply({"params": {"kernel": w}}, x))
 
     nnx_layer = NnxTranspose(
         1,
@@ -145,18 +139,14 @@ def test_linen_nnx_canonical_same_output_and_gradient_parity_under_jit():
     linen_input_grad, linen_kernel_grad = jax.grad(
         lambda x, w: jnp.sum(linen_apply(x, w) * cotangent), argnums=(0, 1)
     )(inputs, kernel)
-    nnx_input_grad = jax.grad(
-        lambda x: jnp.sum(nnx_apply(x) * cotangent)
-    )(inputs)
-    _, nnx_grads = nnx.value_and_grad(
-        lambda model: jnp.sum(model(inputs) * cotangent)
-    )(nnx_layer)
+    nnx_input_grad = jax.grad(lambda x: jnp.sum(nnx_apply(x) * cotangent))(inputs)
+    _, nnx_grads = nnx.value_and_grad(lambda model: jnp.sum(model(inputs) * cotangent))(
+        nnx_layer
+    )
 
     assert linen_output.shape == nnx_output.shape == (1, 10, 1)
     np.testing.assert_allclose(linen_output, nnx_output, rtol=2e-5, atol=2e-6)
-    np.testing.assert_allclose(
-        linen_input_grad, nnx_input_grad, rtol=2e-5, atol=2e-6
-    )
+    np.testing.assert_allclose(linen_input_grad, nnx_input_grad, rtol=2e-5, atol=2e-6)
     np.testing.assert_allclose(
         linen_kernel_grad, nnx_grads.kernel[...], rtol=2e-5, atol=2e-6
     )
@@ -181,9 +171,9 @@ def test_torch_linen_nnx_canonical_valid_output_and_gradient_parity(
     input_values = np.linspace(
         -0.7, 0.9, np.prod(input_shape), dtype=np.float32
     ).reshape(input_shape)
-    kernel = np.linspace(
-        -0.4, 0.6, np.prod(kernel_shape), dtype=np.float32
-    ).reshape((*kernel_shape, 1, 1))
+    kernel = np.linspace(-0.4, 0.6, np.prod(kernel_shape), dtype=np.float32).reshape(
+        (*kernel_shape, 1, 1)
+    )
 
     linen = linen_cls(
         features=1,
@@ -245,15 +235,15 @@ def test_torch_linen_nnx_canonical_valid_output_and_gradient_parity(
     torch_output = _channels_last(torch_output_cf.detach().numpy())
     assert linen_output.shape == nnx_output.shape == torch_output.shape == expected
 
-    cotangent = np.linspace(
-        0.2, 1.0, np.prod(expected), dtype=np.float32
-    ).reshape(expected)
+    cotangent = np.linspace(0.2, 1.0, np.prod(expected), dtype=np.float32).reshape(
+        expected
+    )
     linen_input_grad, linen_kernel_grad = jax.grad(
         lambda x, w: jnp.sum(linen_apply(x, w) * cotangent), argnums=(0, 1)
     )(linen_x, linen_w)
-    nnx_input_grad = jax.grad(
-        lambda value: jnp.sum(nnx_layer(value) * cotangent)
-    )(linen_x)
+    nnx_input_grad = jax.grad(lambda value: jnp.sum(nnx_layer(value) * cotangent))(
+        linen_x
+    )
     _, nnx_grads = nnx.value_and_grad(
         lambda model: jnp.sum(model(linen_x) * cotangent)
     )(nnx_layer)
@@ -286,9 +276,7 @@ def test_torch_linen_nnx_canonical_valid_output_and_gradient_parity(
     np.testing.assert_allclose(
         np.asarray(linen_kernel_grad),
         np.flip(
-            np.transpose(
-                torch_layer.weight.grad.numpy(), (*range(2, rank + 2), 0, 1)
-            ),
+            np.transpose(torch_layer.weight.grad.numpy(), (*range(2, rank + 2), 0, 1)),
             axis=tuple(range(rank)),
         ),
         rtol=3e-4,
