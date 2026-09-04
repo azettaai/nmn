@@ -1,5 +1,6 @@
 """Regression tests for CI/CD workflow policy."""
 
+import importlib.util
 import json
 import re
 from pathlib import Path
@@ -16,6 +17,15 @@ DOCUSAURUS = WORKFLOWS.parents[1] / "website" / "docusaurus"
 ROOT = WORKFLOWS.parents[1]
 CHECKOUT_REF = re.compile(r"actions/checkout@([^\s'\"#]+)")
 ACTION_REF = re.compile(r"uses:\s+([^\s@]+)@([^\s#]+)")
+
+
+def _load_minimum_version_selector():
+    path = ROOT / "scripts" / "select_minimum_version_jobs.py"
+    spec = importlib.util.spec_from_file_location("minimum_version_selector", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_publish_uploads_only_version_tags():
@@ -175,8 +185,60 @@ def test_minimum_backend_policy_is_scheduled_and_matches_metadata():
     assert "tensorflow==2.10.0" in workflow and "tensorflow>=2.10.0" in extras["tf"]
     assert "keras==3.0.0" in workflow and "keras>=3.0.0" in extras["keras"]
     assert "mlx==0.18.1" in workflow and "mlx>=0.18.1" in extras["mlx"]
+    assert workflow.count("python -m venv .venv-minimum") == 4
+    assert workflow.count(".venv-minimum/bin/python -m pip check") == 4
+    assert workflow.count(".venv-minimum/bin/python -m pytest") == 4
     assert "native TPU Mosaic and CUDA" in docs
     assert "real Apple Silicon GPU" in docs
+
+
+def test_minimum_backend_workflow_triggers_on_affected_sources_and_tests():
+    workflow = (WORKFLOWS / "minimum-versions.yml").read_text()
+    trigger = workflow.split("permissions:", 1)[0]
+
+    expected_paths = {
+        "src/nmn/torch/**",
+        "src/nmn/tf/**",
+        "src/nmn/keras/**",
+        "src/nmn/mlx/**",
+        "tests/test_torch/**",
+        "tests/test_torch_*.py",
+        "tests/test_tf/**",
+        "tests/test_tf_*.py",
+        "tests/test_keras/**",
+        "tests/test_keras_*.py",
+        "tests/test_mlx/**",
+        "tests/test_mlx_*.py",
+    }
+    assert all(f"- '{path}'" in trigger for path in expected_paths)
+    assert "docs/**" not in trigger
+    assert "README.md" not in trigger
+    assert "needs: changes" in workflow
+    assert workflow.count("if: needs.changes.outputs.") == 4
+    assert "python scripts/select_minimum_version_jobs.py" in workflow
+
+
+def test_minimum_backend_selector_is_precise_and_fail_closed_for_shared_code():
+    selector = _load_minimum_version_selector()
+
+    for job, source, test in (
+        ("torch", "src/nmn/torch/layers/linear.py", "tests/test_torch/test_basic.py"),
+        ("tensorflow", "src/nmn/tf/conv.py", "tests/test_tf/test_basic.py"),
+        ("keras", "src/nmn/keras/nmn.py", "tests/test_keras/test_basic.py"),
+        ("mlx", "src/nmn/mlx/attention.py", "tests/test_mlx/test_basic.py"),
+    ):
+        assert selector.select_jobs([source]) == {job}
+        assert selector.select_jobs([test]) == {job}
+
+    assert selector.select_jobs(["tests/test_mlx_goat_source.py"]) == {"mlx"}
+
+    assert selector.select_jobs(["docs/guides/pytorch.md"]) == set()
+    assert selector.select_jobs(["README.md"]) == set()
+    assert selector.select_jobs(["src/nmn/_epsilon.py"]) == set(selector.JOBS)
+    assert selector.select_jobs(["tests/integration/test_cross_framework.py"]) == set(
+        selector.JOBS
+    )
+    assert selector.select_jobs(["pyproject.toml"]) == set(selector.JOBS)
 
 
 def test_jax_ci_covers_minimum_and_latest_dependency_sets():
