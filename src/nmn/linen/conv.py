@@ -10,6 +10,7 @@ from flax.linen import Module, compact
 from flax.linen.dtypes import promote_dtype
 from flax.linen.initializers import zeros_init
 
+from nmn._conv_transpose import canonical_jax_transpose_padding
 from nmn._epsilon import (
     epsilon_parameter_dtype,
     inverse_softplus,
@@ -552,6 +553,9 @@ class YatConvTranspose1D(_EpsilonValidatedModule):
         kernel_size: Size of the convolving kernel as a tuple (length,).
         strides: Stride of the transposed convolution. Default (1,).
         padding: Padding algorithm. Either 'VALID' or 'SAME'.
+        kernel_dilation: Dilation factor for the kernel. Default (1,).
+        output_padding: Optional high-side extension. Explicit zero selects the
+            canonical NMN output-shape contract; None preserves JAX sizing.
         use_bias: Whether to add a bias. Default True.
         use_alpha: Whether to use alpha scaling. Default True.
         dtype: The dtype of the computation.
@@ -575,6 +579,8 @@ class YatConvTranspose1D(_EpsilonValidatedModule):
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
     epsilon: float = 1e-5
     learnable_epsilon: bool = False
+    kernel_dilation: Sequence[int] = (1,)
+    output_padding: Optional[Union[int, Sequence[int]]] = None
 
     @compact
     def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
@@ -636,11 +642,26 @@ class YatConvTranspose1D(_EpsilonValidatedModule):
             inputs.shape, kernel.shape, ("NWC", "WIO", "NWC")
         )
 
+        transpose_padding = self.padding
+        if self.output_padding is not None:
+            if not isinstance(self.padding, str):
+                raise ValueError(
+                    "output_padding requires padding to be 'SAME' or 'VALID'"
+                )
+            transpose_padding = canonical_jax_transpose_padding(
+                self.kernel_size,
+                self.strides,
+                self.padding,
+                self.kernel_dilation,
+                self.output_padding,
+            )
+
         dot_prod_map = lax.conv_transpose(
             inputs,
             kernel,
             strides=self.strides,
-            padding=self.padding,
+            padding=transpose_padding,
+            rhs_dilation=self.kernel_dilation,
             dimension_numbers=dn,
         )
 
@@ -653,7 +674,8 @@ class YatConvTranspose1D(_EpsilonValidatedModule):
             inputs_squared,
             ones_kernel,
             strides=self.strides,
-            padding=self.padding,
+            padding=transpose_padding,
+            rhs_dilation=self.kernel_dilation,
             dimension_numbers=dn,
         )
 
@@ -687,6 +709,9 @@ class YatConvTranspose2D(_EpsilonValidatedModule):
         kernel_size: Size of the convolving kernel as a tuple (height, width).
         strides: Stride of the transposed convolution. Default (1, 1).
         padding: Padding algorithm. Either 'VALID' or 'SAME'.
+        kernel_dilation: Dilation factors for the kernel. Default (1, 1).
+        output_padding: Optional high-side extensions. Explicit zero selects the
+            canonical NMN output-shape contract; None preserves JAX sizing.
         use_bias: Whether to add a bias. Default True.
         use_alpha: Whether to use alpha scaling. Default True.
         dtype: The dtype of the computation.
@@ -710,6 +735,8 @@ class YatConvTranspose2D(_EpsilonValidatedModule):
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
     epsilon: float = 1e-5
     learnable_epsilon: bool = False
+    kernel_dilation: Sequence[int] = (1, 1)
+    output_padding: Optional[Union[int, Sequence[int]]] = None
 
     @compact
     def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
@@ -771,11 +798,26 @@ class YatConvTranspose2D(_EpsilonValidatedModule):
             inputs.shape, kernel.shape, ("NHWC", "HWIO", "NHWC")
         )
 
+        transpose_padding = self.padding
+        if self.output_padding is not None:
+            if not isinstance(self.padding, str):
+                raise ValueError(
+                    "output_padding requires padding to be 'SAME' or 'VALID'"
+                )
+            transpose_padding = canonical_jax_transpose_padding(
+                self.kernel_size,
+                self.strides,
+                self.padding,
+                self.kernel_dilation,
+                self.output_padding,
+            )
+
         dot_prod_map = lax.conv_transpose(
             inputs,
             kernel,
             strides=self.strides,
-            padding=self.padding,
+            padding=transpose_padding,
+            rhs_dilation=self.kernel_dilation,
             dimension_numbers=dn,
         )
 
@@ -788,7 +830,8 @@ class YatConvTranspose2D(_EpsilonValidatedModule):
             inputs_squared,
             ones_kernel,
             strides=self.strides,
-            padding=self.padding,
+            padding=transpose_padding,
+            rhs_dilation=self.kernel_dilation,
             dimension_numbers=dn,
         )
 
@@ -822,6 +865,9 @@ class YatConvTranspose3D(_EpsilonValidatedModule):
         kernel_size: Size of the convolving kernel as a tuple (depth, height, width).
         strides: Stride of the transposed convolution. Default (1, 1, 1).
         padding: Padding algorithm. Either 'VALID' or 'SAME'.
+        kernel_dilation: Dilation factors for the kernel. Default (1, 1, 1).
+        output_padding: Optional high-side extensions. Explicit zero selects the
+            canonical NMN output-shape contract; None preserves JAX sizing.
         use_bias: Whether to add a bias. Default True.
         use_alpha: Whether to use alpha scaling. Default True.
         dtype: The dtype of the computation.
@@ -845,6 +891,8 @@ class YatConvTranspose3D(_EpsilonValidatedModule):
     alpha_init: Any = lambda key, shape, dtype: jnp.ones(shape, dtype)
     epsilon: float = 1e-5
     learnable_epsilon: bool = False
+    kernel_dilation: Sequence[int] = (1, 1, 1)
+    output_padding: Optional[Union[int, Sequence[int]]] = None
 
     @compact
     def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
@@ -906,11 +954,26 @@ class YatConvTranspose3D(_EpsilonValidatedModule):
             inputs.shape, kernel.shape, ("NDHWC", "DHWIO", "NDHWC")
         )
 
+        transpose_padding = self.padding
+        if self.output_padding is not None:
+            if not isinstance(self.padding, str):
+                raise ValueError(
+                    "output_padding requires padding to be 'SAME' or 'VALID'"
+                )
+            transpose_padding = canonical_jax_transpose_padding(
+                self.kernel_size,
+                self.strides,
+                self.padding,
+                self.kernel_dilation,
+                self.output_padding,
+            )
+
         dot_prod_map = lax.conv_transpose(
             inputs,
             kernel,
             strides=self.strides,
-            padding=self.padding,
+            padding=transpose_padding,
+            rhs_dilation=self.kernel_dilation,
             dimension_numbers=dn,
         )
 
@@ -923,7 +986,8 @@ class YatConvTranspose3D(_EpsilonValidatedModule):
             inputs_squared,
             ones_kernel,
             strides=self.strides,
-            padding=self.padding,
+            padding=transpose_padding,
+            rhs_dilation=self.kernel_dilation,
             dimension_numbers=dn,
         )
 
