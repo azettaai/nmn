@@ -168,9 +168,18 @@ def test_canonical_valid_stride_gap_output_and_gradients(
     class_name, input_shape, kernel, strides, expected
 ):
     tf = pytest.importorskip("tensorflow")
-    import nmn.tf as nmn_tf
+    from nmn.tf import (
+        YatConvTranspose1D,
+        YatConvTranspose2D,
+        YatConvTranspose3D,
+    )
 
-    layer = getattr(nmn_tf, class_name)(
+    layer_type = {
+        "YatConvTranspose1D": YatConvTranspose1D,
+        "YatConvTranspose2D": YatConvTranspose2D,
+        "YatConvTranspose3D": YatConvTranspose3D,
+    }[class_name]
+    layer = layer_type(
         1,
         kernel,
         strides=strides,

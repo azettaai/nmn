@@ -3,8 +3,8 @@
 import pytest
 
 from nmn._conv_transpose import (
-    canonical_same_crop_or_pad,
     canonical_jax_transpose_padding,
+    canonical_same_crop_or_pad,
     canonical_transpose_output_spatial,
 )
 

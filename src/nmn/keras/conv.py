@@ -251,8 +251,7 @@ def _nmn_conv_transpose(layer, inputs, kernel):
         )
         slices = [slice(None)]
         slices.extend(
-            slice(max(low, 0), -high if high > 0 else None)
-            for low, high in adjustments
+            slice(max(low, 0), -high if high > 0 else None) for low, high in adjustments
         )
         slices.append(slice(None))
         result = result[tuple(slices)]
@@ -1615,9 +1614,7 @@ class YatConvTranspose1D(_KernelBankSerializationMixin, Layer):
         ones_kernel_shape = tuple(self.kernel_size) + (1, self.input_dim)
         ones_kernel = ops.ones(ones_kernel_shape, dtype=kernel.dtype)
 
-        patch_sq_sum_map_raw = _nmn_conv_transpose(
-            self, inputs_squared, ones_kernel
-        )
+        patch_sq_sum_map_raw = _nmn_conv_transpose(self, inputs_squared, ones_kernel)
 
         patch_sq_sum_map = ops.repeat(patch_sq_sum_map_raw, self.filters, axis=-1)
 
@@ -1907,9 +1904,7 @@ class YatConvTranspose2D(_KernelBankSerializationMixin, Layer):
         ones_kernel_shape = tuple(self.kernel_size) + (1, self.input_dim)
         ones_kernel = ops.ones(ones_kernel_shape, dtype=kernel.dtype)
 
-        patch_sq_sum_map_raw = _nmn_conv_transpose(
-            self, inputs_squared, ones_kernel
-        )
+        patch_sq_sum_map_raw = _nmn_conv_transpose(self, inputs_squared, ones_kernel)
 
         patch_sq_sum_map = ops.repeat(patch_sq_sum_map_raw, self.filters, axis=-1)
 
@@ -2201,9 +2196,7 @@ class YatConvTranspose3D(_KernelBankSerializationMixin, Layer):
         ones_kernel_shape = tuple(self.kernel_size) + (1, self.input_dim)
         ones_kernel = ops.ones(ones_kernel_shape, dtype=kernel.dtype)
 
-        patch_sq_sum_map_raw = _nmn_conv_transpose(
-            self, inputs_squared, ones_kernel
-        )
+        patch_sq_sum_map_raw = _nmn_conv_transpose(self, inputs_squared, ones_kernel)
 
         patch_sq_sum_map = ops.repeat(patch_sq_sum_map_raw, self.filters, axis=-1)
 
