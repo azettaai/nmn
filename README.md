@@ -90,7 +90,14 @@ pip install "nmn[keras]"          # + Keras 3 (choose JAX, TF, or Torch separate
 pip install "nmn[tf]"             # + TensorFlow
 pip install "nmn[mlx]"            # + MLX (Apple Silicon only)
 pip install "nmn[all]"            # everything except MLX (Linux/Windows safe)
+pip install "nmn[data]"           # dataset loaders used by runnable examples
+pip install "nmn[nnx,examples]"   # NNX + all training/example dependencies
 ```
+
+Backend extras contain only what the library itself imports. Runnable training
+scripts need both their backend and the `examples` extra—for example,
+`nmn[torch,examples]`, `nmn[linen,examples]`, or `nmn[mlx,examples]`. The
+lighter `data` extra installs only the supported dataset loaders.
 
 **Requirements:** Python ≥ 3.10 (≥ 3.11 if you want JAX/Flax).
 

@@ -58,6 +58,9 @@ No `nnx.relu` needed.
 
 ## 3. MNIST end-to-end
 
+For the runnable script, install `pip install "nmn[nnx,examples]"`. Importing
+its `YatMLP` model still requires only `nmn[nnx]` and does not load data.
+
 ```python
 import jax, jax.numpy as jnp
 import optax
