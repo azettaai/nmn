@@ -15,6 +15,7 @@ Welcome to the **Neural Matter Networks** documentation. This is the local-repo 
 | **See code snippets per framework**          | [`EXAMPLES.md`](../EXAMPLES.md) at repo root                |
 | **Run a full training script**               | [`src/nmn/<framework>/examples/`](../src/nmn/)              |
 | **Contribute**                                | [`CONTRIBUTING.md`](../CONTRIBUTING.md)                     |
+| **Maintain the public mirror**                | [Public mirror synchronization](mirror-sync.md)             |
 | **Report a security issue**                  | [`SECURITY.md`](../SECURITY.md)                             |
 
 ---
