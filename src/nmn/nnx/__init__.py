@@ -77,6 +77,7 @@ from nmn.nnx.layers import (  # Layers; Utilities
     CONV_DEFAULT_CONSTANT_ALPHA,
     Embed,
     FrozenParam,
+    KernelBank,
     MultiHeadAttention,
     RotaryYatAttention,
     YatConv,
@@ -163,6 +164,7 @@ __all__ = [
     # -------------------------------------------------------------------------
     "YatNMN",
     "FrozenParam",
+    "KernelBank",
     "Embed",
     "YatEmbed",  # alias of Embed for cross-framework consistency
     # -------------------------------------------------------------------------

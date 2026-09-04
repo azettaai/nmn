@@ -14,6 +14,7 @@ from .attention import (
 
 # Import embedding
 from .embed import YatEmbed
+from .kernel_bank import KernelBank
 from .layers import (
     YatConv1D,
     YatConv2D,
@@ -39,6 +40,7 @@ __all__ = [
     "YatConvTranspose3D",
     # YAT NMN
     "YatNMN",
+    "KernelBank",
     # YAT Attention
     "MultiHeadYatAttention",
     # MAY / RAY linear-attention feature maps
