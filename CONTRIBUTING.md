@@ -133,12 +133,14 @@ Each of the six framework backends — `nmn.torch`, `nmn.nnx`, `nmn.linen`, `nmn
 
 | Extra | Installs | Backend(s) it enables |
 | --- | --- | --- |
-| `nmn[torch]` | torch, torchvision | `nmn.torch` |
+| `nmn[torch]` | torch | `nmn.torch` |
 | `nmn[nnx]` | jax, jaxlib, flax | `nmn.nnx` |
 | `nmn[linen]` | jax, jaxlib, flax | `nmn.linen` |
 | `nmn[keras]` | keras | `nmn.keras` (select a Keras backend separately) |
 | `nmn[tf]` | tensorflow | `nmn.tf` |
 | `nmn[mlx]` | mlx (Apple Silicon) | `nmn.mlx` |
+| `nmn[data]` | torchvision, tensorflow-datasets, datasets | Example data loaders |
+| `nmn[examples]` | data loaders and training/evaluation tools | Runnable examples |
 
 Practical consequences for contributors:
 
