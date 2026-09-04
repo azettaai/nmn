@@ -120,6 +120,7 @@ class TensorFlowAdapter:
             return output, tape.gradient(loss, layer.embedding)
 
         output, gradient = (tf.function(evaluate) if compiled else evaluate)(indices)
+        gradient = tf.convert_to_tensor(gradient)
         return OracleResult(np.asarray(output), {"embedding": np.asarray(gradient)})
 
     @staticmethod
