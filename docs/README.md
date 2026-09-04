@@ -45,7 +45,11 @@ Each guide is self-contained: install → hello world → MNIST → CNN → atte
 | **TensorFlow** | You need TF-specific deployment (TFLite, Serving) or `tf.Module`-level control.            |
 | **MLX**        | You're on Apple Silicon and want the best perf-per-watt + native Metal GPU acceleration.   |
 
-All six **produce numerically equivalent outputs** (max abs error < 1e-6 in fp32). You can prototype in one and serve from another.
+All six expose the NMN operation families. Consult the generated
+[cross-framework conformance contract](generated/conformance.md) before porting:
+it distinguishes oracle-tested and fixture-tested behavior from declared or
+partial capabilities and distinguishes enforced tolerances from dtype policies
+that are declared but not yet tested.
 
 ---
 
@@ -122,7 +126,7 @@ Most issues fall into one of these buckets:
 | ---------------------------------------- | ------------------------------------------------------------------------- |
 | `NaN` loss within first ~100 steps        | Bump `epsilon` from `1e-5` → `1e-3` (especially fp16/bf16)                |
 | Slow / no learning early                  | Add `use_alpha=True` or `constant_alpha=True`                              |
-| Numerical mismatch across frameworks      | Run `pytest tests/integration/ -v` to confirm parity on your machine     |
+| Numerical mismatch across frameworks      | Run `pytest tests/conformance/ -v` to check the manifest's exact profiles |
 | Cannot install jax / version conflict     | Pin: `pip install "jax==0.9.1" "jaxlib==0.9.1" "flax==0.12.5"`            |
 | Cannot import `nmn.<framework>`          | Install the matching extra: `pip install "nmn[<framework>]"`              |
 

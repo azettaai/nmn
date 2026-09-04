@@ -12,6 +12,8 @@ from .attention import (
     maclaurin_yat_attention,
     radial_features,
     radial_yat_attention,
+    yat_attention,
+    yat_attention_weights,
 )
 
 # Import embedding
@@ -45,6 +47,8 @@ __all__ = [
     "KernelBank",
     # YAT Attention
     "MultiHeadYatAttention",
+    "yat_attention",
+    "yat_attention_weights",
     # MAY / RAY linear-attention feature maps
     "create_maclaurin_projection",
     "maclaurin_features",

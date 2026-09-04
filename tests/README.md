@@ -3,7 +3,8 @@
 The suite is organized by the boundary it verifies:
 
 - `test_<backend>/` — backend-specific unit and regression tests;
-- `integration/` — numerical parity and cross-framework behavior;
+- `conformance/` — manifest-driven NumPy-oracle and fixture conformance;
+- `integration/` — package-level behavior spanning multiple components;
 - `test_cli.py` — import-light command-line behavior;
 - `test_collection_policy.py` — optional-backend and collection isolation;
 - `test_documentation_policy.py` — installation and release-metadata invariants;
@@ -18,6 +19,7 @@ Useful commands:
 ```bash
 python -m pytest -q -m "not slow"
 python -m pytest tests/test_nnx -q
+python -m pytest tests/conformance -q
 python -m pytest tests/integration -q
 python -m pytest \
   tests/test_workflow_policy.py \

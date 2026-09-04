@@ -806,12 +806,13 @@ logits = mixed(x.astype(jnp.bfloat16), deterministic=True)
 ```
 
 `mixed` avoids explicit full-array FP32 operand casts and uses
-`preferred_element_type=jnp.float32`; numerical-parity tests cover both FP16
-and BF16 operands. `bf16` uses a dimension-scaled form to keep intermediate
+`preferred_element_type=jnp.float32`. FP16 and BF16 are supported execution
+choices, but the packaged cross-framework conformance profiles currently
+enforce float32 only. `bf16` uses a dimension-scaled form to keep intermediate
 values near unit scale. All modes support `fused=True` with matching forward
 and backward semantics; the unchanged default FP32 path keeps its optimized
-analytical VJP. Benchmark lowered HLO and step time on the actual TPU before
-choosing a deployment mode.
+analytical VJP. Validate numerical behavior and benchmark lowered HLO and step
+time on the actual TPU before choosing a deployment mode.
 
 ## Performance Tips
 
