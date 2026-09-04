@@ -286,17 +286,34 @@ def test_sdist_excludes_the_local_dacli_evidence_ledger():
 
 def test_mirror_uses_repository_scoped_self_sync_and_verifies_every_ref():
     workflow = (WORKFLOWS / "mirror.yml").read_text()
+    sync_script = (ROOT / "scripts" / "sync-public-mirror.sh").read_text()
 
     assert "github.repository == 'mlnomadpy/nmn'" in workflow
-    assert "contents: write" in workflow
+    assert "actions/create-github-app-token@v3" in workflow
+    assert "client-id: ${{ vars.MIRROR_APP_CLIENT_ID }}" in workflow
+    assert "private-key: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}" in workflow
+    assert "permission-contents: write" in workflow
+    assert "permission-workflows: write" in workflow
+    token_step = workflow.split("id: mirror-token", 1)[1].split("\n\n", 1)[0]
+    assert "owner:" not in token_step
+    assert "repositories:" not in token_step
+    assert "persist-credentials: false" in workflow
+    assert "MIRROR_PUSH_REMOTE: https://x-access-token:" in workflow
+    assert "${{ github.repository }}.git" in workflow
+    assert workflow.count("${{ steps.mirror-token.outputs.token }}") == 1
+    assert 'mirror_push_remote="${MIRROR_PUSH_REMOTE:-${mirror_remote}}"' in sync_script
+    assert workflow.count("contents: read") == 1
+    assert "\n      contents: write\n" not in workflow
     assert "MIRROR_PAT" not in workflow
+    assert "DEPLOY_KEY" not in workflow
     assert "https://github.com/azettaai/nmn.git" in workflow
-    assert "git merge-base --is-ancestor" in workflow
-    assert "git push origin refs/remotes/canonical/master:refs/heads/master" in workflow
-    assert "git push origin --tags" in workflow
-    assert "git ls-remote" in workflow
-    assert "mirrored_head" in workflow
-    assert "mirrored_tag" in workflow
+    assert "bash scripts/sync-public-mirror.sh" in workflow
+    assert "git merge-base --is-ancestor" in sync_script
+    assert 'git push --atomic "${mirror_push_remote}"' in sync_script
+    assert '"${canonical_ref}:refs/heads/${branch}" --tags' in sync_script
+    assert "git ls-remote" in sync_script
+    assert "mirrored_head" in sync_script
+    assert "mirrored_tag" in sync_script
     assert "continue-on-error" not in workflow
 
 
