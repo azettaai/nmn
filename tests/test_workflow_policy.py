@@ -189,6 +189,7 @@ def test_jax_ci_covers_minimum_and_latest_dependency_sets():
     assert '"jax==0.9.1"' in jax_job
     assert 'pip install -e ".[dev,nnx,linen]" optax' in jax_job
     assert "tests/scripts" not in jax_job
+    assert "tests/benchmarks" not in jax_job
     assert "Run minimum-version JAX tests with coverage" in jax_job
     assert "Run latest-version JAX backend tests" in jax_job
     assert jax_job.count("--cov=nmn") == 1
@@ -235,7 +236,8 @@ def test_only_documented_pytest_markers_are_declared():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
 
     assert project["tool"]["pytest"]["ini_options"]["markers"] == [
-        "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+        "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+        "benchmark: explicit performance measurements excluded from correctness CI",
     ]
 
 
