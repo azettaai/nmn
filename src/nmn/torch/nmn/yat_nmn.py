@@ -104,7 +104,7 @@ class YatNMN(nn.Module):
         constant_alpha: Optional[Union[bool, float]] = None,
         dtype: Optional[torch.dtype] = None,
         param_dtype: torch.dtype = torch.float32,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         spherical: bool = False,
         positive_init: bool = False,
@@ -117,9 +117,9 @@ class YatNMN(nn.Module):
         kernel_init: Optional[Callable[[torch.Tensor], object]] = None,
         bias_init: Optional[Callable[[torch.Tensor], object]] = None,
         alpha_init: Optional[Callable[[torch.Tensor], object]] = None,
-        device=None,
+        device: torch.device | str | int | None = None,
         kernel_bank: Optional[KernelBank] = None,
-    ):
+    ) -> None:
         in_features = validate_positive_int(in_features, "in_features")
         out_features = validate_positive_int(out_features, "out_features")
         super().__init__()
@@ -338,7 +338,7 @@ class YatNMN(nn.Module):
         alpha_init: Optional[Callable[[torch.Tensor], object]] = None,
         *,
         initialize_kernel: bool = True,
-    ):
+    ) -> None:
         """
         Initialize network parameters with specified or default initializers.
         """

@@ -91,7 +91,7 @@ class YatNMN(SingleInputSavedModelMixin, tf.Module):
         constant_alpha: Optional[Union[bool, float]] = None,
         positive_init: bool = False,
         dtype: tf.DType = tf.float32,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         spherical: bool = False,
         weight_normalized: bool = False,
@@ -99,7 +99,7 @@ class YatNMN(SingleInputSavedModelMixin, tf.Module):
         lazy: bool = False,
         freeze_kernel: bool = False,
         name: Optional[str] = None,
-    ):
+    ) -> None:
         features = validate_positive_int(features, "features")
         super().__init__(name=name)
         self.features = features

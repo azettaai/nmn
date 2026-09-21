@@ -92,7 +92,7 @@ class YatEmbed(Module):
         return jnp.take(embedding, inputs, axis=0)
 
     @compact
-    def attend(self, query):
+    def attend(self, query: jnp.ndarray) -> jnp.ndarray:
         """Compute YAT similarity between query and all embeddings.
 
         Args:

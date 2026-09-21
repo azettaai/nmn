@@ -154,7 +154,7 @@ class YatConv(Module):
         precision: PrecisionLike = None,
         conv_general_dilated: ConvGeneralDilatedT = lax.conv_general_dilated,
         promote_dtype: PromoteDtypeFn = dtypes.promote_dtype,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         drop_rate: float = 0.0,
         weight_normalized: bool = False,
@@ -163,7 +163,7 @@ class YatConv(Module):
         kernel_bank_id: str = "default",
         kernel_bank: tp.Optional[KernelBank] = None,
         rngs: rnglib.Rngs,
-    ):
+    ) -> None:
         in_features = validate_positive_int(in_features, "in_features")
         out_features = validate_positive_int(out_features, "out_features")
         feature_group_count = validate_positive_int(

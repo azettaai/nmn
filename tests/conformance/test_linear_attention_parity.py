@@ -13,10 +13,11 @@ from tests.conformance.oracle import (
     canonical_linear_attention_case,
     linear_yat_attention,
 )
+from tests.tolerances import tolerance
 
 CONTRACT = load_contract()
 ROOT = Path(__file__).resolve().parents[2]
-TOLERANCE = CONTRACT["tolerances"]["float32"]
+TOLERANCE = tolerance("float32", "may")
 
 
 def _cases():

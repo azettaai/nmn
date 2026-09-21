@@ -55,7 +55,9 @@ that are declared but not yet tested.
 
 ## Layer support matrix
 
-All layers are available across **all 6 frameworks**.
+The core layer families below have six backend implementations. Constructor APIs,
+layouts, execution modes, and advanced features differ; consult the
+[generated conformance contract](generated/conformance.md) for tested capabilities.
 
 | Layer                                      | PyTorch                | TF                     | Keras                  | NNX                                       | Linen                  | MLX                    |
 | ------------------------------------------ | :--------------------: | :--------------------: | :--------------------: | :---------------------------------------: | :--------------------: | :--------------------: |
@@ -66,11 +68,11 @@ All layers are available across **all 6 frameworks**.
 | Embedding                                  | `YatEmbed`             | `YatEmbed`             | `YatEmbed`             | `Embed`                                   | `YatEmbed`             | `YatEmbed`             |
 | Squashers (`softermax`, `softer_sigmoid`, `soft_tanh`) | ✅       | ✅                     | ✅                     | ✅                                        | ✅                     | ✅                     |
 
-**NNX-only advanced variants:**
+**Advanced variants (backend-specific):**
 
-- `RotaryYatAttention` — YAT + RoPE positional encoding
-- `MultiHeadAttention(use_performer=True)` — Spherical YAT-Performer, O(n) complexity
-- `RotaryYatAttention(use_performer=True, performer_kind=...)` — selects the
+- `RotaryYatAttention` — YAT + RoPE positional encoding (NNX and MLX)
+- NNX `MultiHeadAttention(use_performer=True)` — Spherical YAT-Performer, O(n) complexity
+- NNX `RotaryYatAttention(use_performer=True, performer_kind=...)` — selects the
   linear-attention feature map: `"slay"` (default, bias-free anchor), `"maclaurin"`
   (**MAY**, bias-aware Random-Maclaurin), or `"radial"` (**RAY**, bias-aware radial
   RFF). Functional API: `create_maclaurin_projection` / `maclaurin_yat_attention`
@@ -143,3 +145,9 @@ The following items are tracked in [`TODO.md`](../TODO.md):
 - **Auto-generated Sphinx/`mkdocstrings` API reference** — current API docs live in docstrings + this hand-written set.
 
 Contributions on any of these are welcome — see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+## Generated API reference
+
+See [typing support and backend API references](typing.md).
+
+[Executable smoke examples](smoke-examples.md) are checked in backend CI.

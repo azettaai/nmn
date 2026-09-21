@@ -468,7 +468,7 @@ class RotaryYatAttention(Module):
         use_bias: bool = False,
         normalize_qk: bool = False,
         use_out_proj: bool = True,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         use_softermax: bool = False,
         power: float = 1.0,
         use_performer: bool = False,
@@ -489,7 +489,7 @@ class RotaryYatAttention(Module):
         learnable_epsilon: bool = False,
         normalization: str = "softmax",
         rngs: rnglib.Rngs,
-    ):
+    ) -> None:
         """Initializes RotaryYatAttention.
 
         Args:
@@ -1011,7 +1011,9 @@ class RotaryYatAttention(Module):
 
         return output
 
-    def init_cache(self, batch_size: int, max_length: int, dtype: Dtype = jnp.float32):
+    def init_cache(
+        self, batch_size: int, max_length: int, dtype: Dtype = jnp.float32
+    ) -> None:
         """Initializes cache for autoregressive decoding.
 
         Args:

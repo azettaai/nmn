@@ -9,7 +9,7 @@ from typing import Any, TypeVar, cast
 _T = TypeVar("_T")
 
 
-def _has_invalid_rate_dtype(value) -> bool:
+def _has_invalid_rate_dtype(value: object) -> bool:
     """Detect non-real scalar arrays without importing their framework."""
     dtype = getattr(value, "dtype", None)
     if dtype is None:
@@ -79,7 +79,7 @@ def validate_rate(value: _T, name: str) -> float | _T:
     return rate
 
 
-def validate_positive_int(value, name: str) -> int:
+def validate_positive_int(value: Any, name: str) -> int:
     """Return *value* as a strictly positive integer, rejecting booleans."""
     if isinstance(value, bool):
         raise ValueError(f"{name} must be a positive integer, got {value!r}")

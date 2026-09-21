@@ -20,6 +20,7 @@ from typing import Any, Callable, Optional, Union
 
 import jax
 import jax.numpy as jnp
+import torch
 from flax import nnx
 from flax.nnx import rnglib
 from flax.nnx.module import Module, first_from
@@ -220,11 +221,11 @@ class MultiHeadAttention(Module):
         qkv_dot_general_cls: Any = None,
         out_dot_general_cls: Any = None,
         rngs: rnglib.Rngs,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         use_softermax: bool = False,
         power: float = 1.0,
-    ):
+    ) -> None:
         """Initializes the MultiHeadAttention module.
 
         Args:
@@ -712,7 +713,7 @@ class MultiHeadAttention(Module):
 
         return output
 
-    def init_cache(self, input_shape: Shape, dtype: Dtype = jnp.float32):
+    def init_cache(self, input_shape: Shape, dtype: Dtype = jnp.float32) -> None:
         """Initializes the cache for autoregressive decoding.
 
         Args:

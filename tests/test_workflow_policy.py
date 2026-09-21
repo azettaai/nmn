@@ -307,10 +307,15 @@ def test_developer_commands_and_tool_versions_match_ci():
 def test_only_documented_pytest_markers_are_declared():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
 
-    assert project["tool"]["pytest"]["ini_options"]["markers"] == [
-        "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-        "benchmark: explicit performance measurements excluded from correctness CI",
-    ]
+    from tests._tiers import TIERS
+
+    markers = project["tool"]["pytest"]["ini_options"]["markers"]
+    assert {marker.split(":")[0] for marker in markers} == set(TIERS) | {
+        "slow",
+        "benchmark",
+    }
+    documentation = (ROOT / "tests/README.md").read_text()
+    assert all(f"`{tier}`" in documentation for tier in TIERS)
 
 
 def test_contribution_templates_cover_every_backend():
@@ -479,10 +484,8 @@ def test_website_dependency_audit_has_exact_reviewed_allowlist():
     assert lockfile["packages"]["node_modules/qs"]["version"] == "6.16.0"
     assert lockfile["packages"]["node_modules/uuid"]["version"] == "11.1.1"
     assert "npm run audit:ci" in workflow
-    assert set(re.findall(r"'(GHSA-[\w-]+)'", script)) == {
-        "GHSA-w3rx-r6r6-pgpr",
-        "GHSA-5p2g-fcmc-qvqq",
-    }
+    assert set(re.findall(r"'(GHSA-[\w-]+)'", script)) == set()
+    assert lockfile["packages"]["node_modules/image-size"]["version"] == "2.0.4"
     assert "critical > 0" in script
     assert "Unreviewed high advisories" in script
     assert "report.error" in script

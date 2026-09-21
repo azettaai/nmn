@@ -256,10 +256,10 @@ class MultiHeadYatAttention(tf.Module):
         normalize_qk: bool = False,
         spherical: bool = False,
         use_out_proj: bool = True,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None,
-    ):
+    ) -> None:
         embed_dim = validate_positive_int(embed_dim, "embed_dim")
         num_heads = validate_positive_int(num_heads, "num_heads")
         dropout = validate_rate(dropout, "dropout")

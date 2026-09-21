@@ -1,11 +1,12 @@
+from __future__ import annotations
+
 import math
+from typing import Any, cast
 
 import numpy as np
-from keras.src import activations, constraints, initializers, ops, regularizers
-from keras.src.api_export import keras_export
-from keras.src.backend import backend, standardize_dtype
-from keras.src.layers.input_spec import InputSpec
-from keras.src.layers.layer import Layer
+from keras import activations, constraints, initializers, ops, regularizers
+from keras.backend import backend, standardize_dtype
+from keras.layers import InputSpec, Layer
 
 from nmn._epsilon import (
     epsilon_parameter_dtype,
@@ -15,6 +16,8 @@ from nmn._epsilon import (
 )
 from nmn._validation import validate_positive_int
 
+from ._compat import keras_export
+from ._types import Config, Shape, Tensor
 from ._yat_core import reduction_safe_upcast, saturating_downcast, stable_yat_ratio
 
 # Default constant alpha value (sqrt(2))
@@ -89,27 +92,27 @@ class YatNMN(Layer):
 
     def __init__(
         self,
-        units,
-        use_bias=True,
-        constant_bias=None,
-        use_alpha=True,
-        constant_alpha=None,
-        positive_init=False,
-        epsilon=1e-5,
-        learnable_epsilon=False,
-        spherical=False,
-        weight_normalized=False,
-        lazy=False,
-        freeze_kernel=None,
-        kernel_initializer="glorot_normal",
-        bias_initializer="zeros",
-        kernel_regularizer=None,
-        bias_regularizer=None,
-        activity_regularizer=None,
-        kernel_constraint=None,
-        bias_constraint=None,
-        **kwargs,
-    ):
+        units: int,
+        use_bias: bool = True,
+        constant_bias: float | bool | None = None,
+        use_alpha: bool = True,
+        constant_alpha: bool | float | None = None,
+        positive_init: bool = False,
+        epsilon: float = 1e-05,
+        learnable_epsilon: bool = False,
+        spherical: bool = False,
+        weight_normalized: bool = False,
+        lazy: bool = False,
+        freeze_kernel: bool | None = None,
+        kernel_initializer: Any = "glorot_normal",
+        bias_initializer: Any = "zeros",
+        kernel_regularizer: Any = None,
+        bias_regularizer: Any = None,
+        activity_regularizer: Any = None,
+        kernel_constraint: Any = None,
+        bias_constraint: Any = None,
+        **kwargs: Any,
+    ) -> None:
         units = validate_positive_int(units, "units")
         super().__init__(activity_regularizer=activity_regularizer, **kwargs)
         self.units = units
@@ -156,7 +159,7 @@ class YatNMN(Layer):
         self.input_spec = InputSpec(min_ndim=2)
         self.supports_masking = True
 
-    def build(self, input_shape):
+    def build(self, input_shape: Shape) -> None:
         input_dim = input_shape[-1]
 
         # In lazy mode the kernel is frozen: trainable=False excludes it from
@@ -224,7 +227,7 @@ class YatNMN(Layer):
         self.input_spec = InputSpec(min_ndim=2, axes={-1: input_dim})
         self.built = True
 
-    def call(self, inputs):
+    def call(self, inputs: Tensor) -> Tensor:
         output_dtype = self.compute_dtype
         inputs = reduction_safe_upcast(inputs)
         kernel = reduction_safe_upcast(self.kernel)
@@ -298,12 +301,12 @@ class YatNMN(Layer):
 
         return saturating_downcast(outputs, output_dtype)
 
-    def compute_output_shape(self, input_shape):
+    def compute_output_shape(self, input_shape: Shape) -> Shape:
         output_shape = list(input_shape)
         output_shape[-1] = self.units
         return tuple(output_shape)
 
-    def get_config(self):
+    def get_config(self) -> Config:
         config = super().get_config()
         config.update(
             {
@@ -330,7 +333,7 @@ class YatNMN(Layer):
                 "bias_constraint": constraints.serialize(self.bias_constraint),
             }
         )
-        return config
+        return cast(Config, config)
 
 
 # Alias for backward compatibility

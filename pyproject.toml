@@ -117,6 +117,11 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = ["--verbose", "--tb=short", "--strict-markers"]
 markers = [
+    "unit: dependency-light package and policy contract",
+    "backend: backend-native correctness, compatibility and serialization",
+    "conformance: oracle/fixture and cross-component contract",
+    "accelerator: real device execution (Metal/CUDA/TPU)",
+    "performance: opt-in timing measurements",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "benchmark: explicit performance measurements excluded from correctness CI",
 ]
@@ -173,3 +178,8 @@ packages = ["src/nmn"]
 # .git/info/exclude rather than the shared .gitignore, so declare the release
 # boundary explicitly instead of relying on developer-local Git state.
 exclude = ["/.dacli"]
+
+[[tool.mypy.overrides]]
+module = ["nmn._validation", "nmn._optional", "nmn.keras.squashers", "nmn.keras._types"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true

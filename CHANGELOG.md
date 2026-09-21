@@ -7,6 +7,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Upgrade website image parsing to patched `image-size` 2.0.4 and remove the
+  temporary advisory allowance.
+- Gate release publication on exact stable tags, successful commit tests,
+  verified metadata, clean-wheel smokes, and identical artifact digests.
+- Correct alpha scaling, backend ownership, and stale documentation paths.
+
+### Changed
+
+- Consolidate Keras, TensorFlow, and Linen convolution implementations behind
+  backend-local rank-generic cores while retaining public defaults and state.
+- Isolate private Keras compatibility hooks and deprecate the unused legacy
+  `nmn.torch.base` module without removing its exports.
+- Annotate public APIs, generate backend API references, and check installed-wheel
+  consumer typing. Document dynamic Keras typing boundaries.
+- Add test tiers, required-backend CI checks, shared tolerance lookup, and split
+  large Torch/Keras regressions into stable feature areas.
+
 ---
 
 ## [0.3.5] — 2026-09-02

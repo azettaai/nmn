@@ -9,14 +9,15 @@ Supports learnable/constant alpha scaling, spherical mode, and QK normalization.
 from __future__ import annotations
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, cast
 
-from keras.src import initializers, ops
-from keras.src.layers.layer import Layer
-from keras.src.saving.object_registration import register_keras_serializable
+from keras import initializers, ops
+from keras.layers import Layer
+from keras.saving import register_keras_serializable
 
 from nmn._validation import validate_positive_int, validate_rate
 
+from ._types import Config, Shape, Tensor
 from ._yat_core import reduction_safe_upcast
 
 __all__ = [
@@ -30,7 +31,9 @@ __all__ = [
 DEFAULT_CONSTANT_ALPHA = math.sqrt(2.0)
 
 
-def normalize_qk(query, key, epsilon: float = 1e-6):
+def normalize_qk(
+    query: Tensor, key: Tensor, epsilon: float = 1e-06
+) -> tuple[Tensor, Tensor]:
     """L2-normalizes query and key to unit vectors."""
     q_norm = ops.sqrt(ops.sum(ops.square(query), axis=-1, keepdims=True) + epsilon)
     k_norm = ops.sqrt(ops.sum(ops.square(key), axis=-1, keepdims=True) + epsilon)
@@ -38,16 +41,16 @@ def normalize_qk(query, key, epsilon: float = 1e-6):
 
 
 def yat_attention_weights(
-    query,
-    key,
-    mask=None,
+    query: Tensor,
+    key: Tensor,
+    mask: Tensor | None = None,
     dropout_rate: float = 0.0,
     training: bool = False,
-    epsilon: float = 1e-5,
-    alpha=None,
+    epsilon: float = 1e-05,
+    alpha: Tensor | None = None,
     scale: Optional[float] = None,
     spherical: bool = False,
-):
+) -> Tensor:
     """Computes YAT attention weights: softmax((Q.K)^2 / (||Q-K||^2 + eps))
 
     Args:
@@ -116,7 +119,7 @@ def yat_attention_weights(
         attn_weights = ops.where(mask, attn_weights, ops.zeros_like(attn_weights))
 
     if dropout_rate > 0.0 and training:
-        from keras.src import random
+        from keras import random
 
         keep = random.dropout(ops.ones_like(attn_weights), rate=dropout_rate)
         attn_weights = attn_weights * keep
@@ -125,17 +128,17 @@ def yat_attention_weights(
 
 
 def yat_attention(
-    query,
-    key,
-    value,
-    mask=None,
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    mask: Tensor | None = None,
     dropout_rate: float = 0.0,
     training: bool = False,
-    epsilon: float = 1e-5,
-    alpha=None,
+    epsilon: float = 1e-05,
+    alpha: Tensor | None = None,
     scale: Optional[float] = None,
     spherical: bool = False,
-):
+) -> Tensor:
     """Computes YAT attention: softmax((Q.K)^2 / (||Q-K||^2 + eps)) . V
 
     Args:
@@ -168,16 +171,16 @@ def yat_attention(
 
 
 def yat_attention_normalized(
-    query,
-    key,
-    value,
-    mask=None,
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    mask: Tensor | None = None,
     dropout_rate: float = 0.0,
     training: bool = False,
-    epsilon: float = 1e-5,
-    alpha=None,
+    epsilon: float = 1e-05,
+    alpha: Tensor | None = None,
     scale: Optional[float] = None,
-):
+) -> Tensor:
     """YAT attention with normalized Q/K (optimized)."""
     return yat_attention(
         query,
@@ -227,10 +230,10 @@ class MultiHeadYatAttention(Layer):
         normalize_qk: bool = False,
         spherical: bool = False,
         use_out_proj: bool = True,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         kernel_initializer: str = "glorot_normal",
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         embed_dim = validate_positive_int(embed_dim, "embed_dim")
         num_heads = validate_positive_int(num_heads, "num_heads")
         dropout = validate_rate(dropout, "dropout")
@@ -263,7 +266,7 @@ class MultiHeadYatAttention(Layer):
         self.use_alpha = use_alpha
         self.constant_alpha = constant_alpha
 
-    def build(self, input_shape):
+    def build(self, input_shape: Shape) -> None:
         input_dim = input_shape[-1]
 
         def _make_kernel(name):
@@ -317,13 +320,13 @@ class MultiHeadYatAttention(Layer):
 
     def call(
         self,
-        query,
-        key=None,
-        value=None,
-        mask=None,
-        attention_mask=None,
-        training=False,
-    ):
+        query: Tensor,
+        key: Tensor | None = None,
+        value: Tensor | None = None,
+        mask: Tensor | None = None,
+        attention_mask: Tensor | None = None,
+        training: bool = False,
+    ) -> Tensor:
         """Applies multi-head YAT attention.
 
         Args:
@@ -439,15 +442,17 @@ class MultiHeadYatAttention(Layer):
 
         return x
 
-    def compute_mask(self, inputs, previous_mask=None):
+    def compute_mask(
+        self, inputs: Tensor, previous_mask: Tensor | None = None
+    ) -> Tensor | None:
         if previous_mask is not None and len(previous_mask.shape) == 2:
             return previous_mask
         return None
 
-    def compute_output_shape(self, input_shape):
-        return input_shape[:-1] + (self.embed_dim,)
+    def compute_output_shape(self, input_shape: Shape) -> Shape:
+        return tuple(input_shape[:-1]) + (self.embed_dim,)
 
-    def get_config(self):
+    def get_config(self) -> Config:
         config = super().get_config()
         config.update(
             {
@@ -464,4 +469,4 @@ class MultiHeadYatAttention(Layer):
                 "kernel_initializer": initializers.serialize(self.kernel_initializer),
             }
         )
-        return config
+        return cast(Config, config)

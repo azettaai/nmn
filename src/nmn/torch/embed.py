@@ -60,12 +60,12 @@ class YatEmbed(nn.Module):
         features: int,
         use_alpha: bool = True,
         constant_alpha: Optional[Union[bool, float]] = None,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         spherical: bool = False,
         weight_normalized: bool = False,
-        device=None,
-        dtype=None,
-    ):
+        device: torch.device | str | int | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
         num_embeddings = validate_positive_int(num_embeddings, "num_embeddings")
         features = validate_positive_int(features, "features")
         super().__init__()

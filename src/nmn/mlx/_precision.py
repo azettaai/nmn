@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import mlx.core as mx
 
 
@@ -25,7 +27,7 @@ def _reduction_safe_upcast_vjp(primals, cotangent, output):
 def reduction_safe_upcast(value: mx.array) -> mx.array:
     """Upcast low-precision reductions and saturate the returning cotangent."""
     if value.dtype in (mx.float16, mx.bfloat16):
-        return _reduction_safe_upcast(value)
+        return cast(mx.array, _reduction_safe_upcast(value))
     return value
 
 

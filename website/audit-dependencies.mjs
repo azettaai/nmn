@@ -1,9 +1,6 @@
 import {spawnSync} from 'node:child_process';
 
-const acceptedHighAdvisories = new Set([
-  'GHSA-5p2g-fcmc-qvqq',
-  'GHSA-w3rx-r6r6-pgpr',
-]);
+const acceptedHighAdvisories = new Set();
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const result = spawnSync(npm, ['audit', '--omit=dev', '--json'], {
