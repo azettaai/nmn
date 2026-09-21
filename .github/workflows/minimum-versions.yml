@@ -127,7 +127,7 @@ jobs:
         run: python -m venv .venv-minimum
       - name: Install declared lower bound
         run: |
-          .venv-minimum/bin/python -m pip install numpy pytest 'keras==3.0.0'
+          .venv-minimum/bin/python -m pip install 'numpy<2' pytest 'keras==3.0.0'
           .venv-minimum/bin/python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           .venv-minimum/bin/python -m pip install -e . --no-deps
           .venv-minimum/bin/python -m pip check
