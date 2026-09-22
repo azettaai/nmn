@@ -20,7 +20,6 @@ from typing import Any, Callable, Optional, Union
 
 import jax
 import jax.numpy as jnp
-import torch
 from flax import nnx
 from flax.nnx import rnglib
 from flax.nnx.module import Module, first_from

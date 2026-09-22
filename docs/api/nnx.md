@@ -203,7 +203,7 @@ MultiHeadAttention(num_heads: int, in_features: int, qkv_features: int | None=No
 
 Multi-head attention with YAT or standard dot-product attention.
 
-[Source](https://github.com/azettaai/nmn/blob/master/src/nmn/nnx/layers/attention/multi_head.py#L133)
+[Source](https://github.com/azettaai/nmn/blob/master/src/nmn/nnx/layers/attention/multi_head.py#L132)
 
 ## MultiHeadYatAttention
 
@@ -213,7 +213,7 @@ MultiHeadYatAttention(num_heads: int, in_features: int, qkv_features: int | None
 
 Multi-head attention with YAT or standard dot-product attention.
 
-[Source](https://github.com/azettaai/nmn/blob/master/src/nmn/nnx/layers/attention/multi_head.py#L133)
+[Source](https://github.com/azettaai/nmn/blob/master/src/nmn/nnx/layers/attention/multi_head.py#L132)
 
 ## ATTENTION_DEFAULT_CONSTANT_ALPHA
 
@@ -223,7 +223,7 @@ ATTENTION_DEFAULT_CONSTANT_ALPHA = jnp.sqrt(2.0)
 
 ATTENTION_DEFAULT_CONSTANT_ALPHA is defined in `src/nmn/nnx/layers/attention/multi_head.py`.
 
-[Source](https://github.com/azettaai/nmn/blob/master/src/nmn/nnx/layers/attention/multi_head.py#L45)
+[Source](https://github.com/azettaai/nmn/blob/master/src/nmn/nnx/layers/attention/multi_head.py#L44)
 
 ## yat_attention
 
