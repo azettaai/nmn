@@ -24,7 +24,7 @@ def _minimum_version(extra: str, package: str) -> str:
         for item in OPTIONAL_DEPENDENCIES[extra]
         if re.match(rf"{re.escape(package)}(?:\[.*\])?>=", item, re.IGNORECASE)
     )
-    return requirement.split(">=", maxsplit=1)[1]
+    return requirement.split(">=", maxsplit=1)[1].split(",", maxsplit=1)[0]
 
 
 def test_nnx_readme_only_advertises_defined_project_extras():
@@ -44,8 +44,8 @@ def test_nnx_readme_only_advertises_defined_project_extras():
 
 def test_nnx_accelerator_commands_use_official_jax_extras():
     jax_minimum = _minimum_version("nnx", "jax")
-    assert f'"jax[tpu]>={jax_minimum}"' in NNX_README
-    assert f'"jax[cuda13]>={jax_minimum}"' in NNX_README
+    assert f'"jax[tpu]>={jax_minimum},<0.11.2"' in NNX_README
+    assert f'"jax[cuda13]>={jax_minimum},<0.11.2"' in NNX_README
     assert '".[tpu]"' not in NNX_README
     assert '".[gpu]"' not in NNX_README
 

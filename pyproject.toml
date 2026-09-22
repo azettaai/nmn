@@ -46,11 +46,11 @@ dev = [
     "hatch-vcs>=0.3.0",
     "tomli>=1.1.0; python_version < '3.11'",
 ]
-nnx = ["jax>=0.9.1", "jaxlib>=0.9.1", "flax>=0.12.5"]
+nnx = ["jax>=0.9.1,<0.11.2", "jaxlib>=0.9.1,<0.11.2", "flax>=0.12.5"]
 torch = ["torch>=1.11.0"]
 keras = ["keras>=3.0.0"]
 tf = ["tensorflow>=2.10.0"]
-linen = ["jax>=0.9.1", "jaxlib>=0.9.1", "flax>=0.12.5"]
+linen = ["jax>=0.9.1,<0.11.2", "jaxlib>=0.9.1,<0.11.2", "flax>=0.12.5"]
 mlx = ["mlx>=0.18.1"]
 all = ["nmn[nnx,torch,keras,tf,linen]"]
 data = [

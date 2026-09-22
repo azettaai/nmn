@@ -17,7 +17,7 @@ a production publication or live mirror synchronization.
 | #152 | Backend-local Keras/TF/Linen rank-generic cores, unchanged constructor/default inventory, serialization regression suites, isolated private Keras adapter, legacy Torch deprecation, complexity budget | Native-device CI; minimum/current Keras checked locally |
 | #150 | Existing merged manifest/oracle/adapters and generated capabilities verified with available eager/compiled modes and TF/Keras in a separate environment | Linux all-backend CI and Apple fixture/Metal CI |
 | #146 | Existing merged scalar validation verified by shared/backend regression suites | Six-backend CI |
-| #137 | Existing merged mirror App implementation and fast-forward/tag safety regressions verified | **Blocked:** mirror variable `MIRROR_APP_CLIENT_ID` and secret `MIRROR_APP_PRIVATE_KEY` absent at inspection; dedicated App setup and live ref verification required |
+| #137 | Superseded by the September 13 decision to maintain `mlnomadpy/nmn` independently; its mirror workflow was removed | Close as not planned; preserve independent history rather than forcing synchronization |
 
 ## Local verification
 
@@ -42,3 +42,8 @@ The host's native MLX initialization is unavailable inside this sandbox. Metal,
 CUDA and TPU execution is not represented as locally verified. See
 [mirror setup](mirror-sync.md), [test tiers](../tests/README.md), and
 [typing support](typing.md) for the operational boundaries.
+
+Remote CI additionally caught and corrected an accidental cross-backend import.
+The latest-version job also exposed Flax 0.12.9's import incompatibility with
+JAX 0.11.2; package and accelerator-install requirements now exclude that JAX
+release pending upstream-compatible validation.

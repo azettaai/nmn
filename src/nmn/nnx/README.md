@@ -31,11 +31,11 @@ cd nmn
 pip install -e ".[nnx]"
 
 # For TPU support, install the official JAX accelerator wheel first
-pip install --upgrade "jax[tpu]>=0.9.1"
+pip install --upgrade "jax[tpu]>=0.9.1,<0.11.2"
 pip install -e ".[nnx]"
 
 # For NVIDIA GPU support (CUDA 13), install the official JAX wheel first
-pip install --upgrade "jax[cuda13]>=0.9.1"
+pip install --upgrade "jax[cuda13]>=0.9.1,<0.11.2"
 pip install -e ".[nnx]"
 ```
 
@@ -967,3 +967,11 @@ See the `examples/` directory for complete training scripts:
 - **Weight Normalization**: Salimans & Kingma (2016)
 - **Neural Matter Networks**: Universal approximation framework
 - **TPU Best Practices**: https://cloud.google.com/tpu/docs/performance-guide
+
+### JAX compatibility ceiling
+
+NMN currently declares JAX/JAXlib `<0.11.2`. Flax 0.12.9 fails during import
+with JAX 0.11.2 because `jax.experimental.hijax.HiPrimitive` is unavailable.
+JAX 0.11.1 imports successfully with Flax 0.12.9. The upper bound protects fresh
+installs until an upstream-compatible pair is validated; CI tests the newest
+versions within the declared range as well as the minimum versions.
