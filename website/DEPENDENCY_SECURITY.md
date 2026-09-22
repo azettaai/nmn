@@ -13,21 +13,13 @@ or any high-severity advisory that is not listed in the audit script.
 - `qs` is overridden to 6.16.0, the first patched release for
   `GHSA-4mjr-xmp4-gh2g`, inherited through the Docusaurus development server.
 
-Both overrides are exercised by the production Docusaurus build. Dependabot
+These overrides are exercised by the production Docusaurus build. Dependabot
 continues to update the npm lockfile weekly.
 
-## Reviewed residual advisories
+## Image parser remediation (#170)
 
-Docusaurus 3.10.2 currently resolves `image-size` 2.0.2, which is also the latest
-published release. No patched version exists for these build-time parser denial
-of service advisories:
-
-- `GHSA-w3rx-r6r6-pgpr` — ICNS parser infinite loop;
-- `GHSA-5p2g-fcmc-qvqq` — JXL/HEIF parser infinite loops.
-
-Exposure is limited because the production build processes only versioned,
-reviewed repository images and MDX; it does not accept user uploads or fetch
-untrusted images. This is a containment measure, not a suppression. The audit
-script requires the exact two-advisory allowlist: a new high finding fails CI,
-and a patched upstream release also fails CI until the obsolete allowance is
-removed.
+The lockfile resolves `image-size` 2.0.4 through Docusaurus's existing compatible
+range, without a forced override. This fixes GHSA-w3rx-r6r6-pgpr (ICNS) and
+GHSA-5p2g-fcmc-qvqq (JXL/HEIF). The high-advisory allowlist is empty, so either
+advisory returning fails the audit gate before artifact upload or deployment.
+Production builds process versioned, reviewed repository images and MDX.

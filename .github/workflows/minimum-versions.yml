@@ -14,6 +14,8 @@ on:
       - 'tests/__init__.py'
       - 'tests/_isolated_backend.py'
       - 'tests/conftest.py'
+      - 'tests/_tiers.py'
+      - 'tests/tolerances.py'
       - 'tests/integration/**'
       - 'tests/test_torch/**'
       - 'tests/test_torch_*.py'
@@ -125,12 +127,12 @@ jobs:
         run: python -m venv .venv-minimum
       - name: Install declared lower bound
         run: |
-          .venv-minimum/bin/python -m pip install numpy pytest 'keras==3.0.0'
+          .venv-minimum/bin/python -m pip install 'numpy<2' pytest 'keras==3.0.0'
           .venv-minimum/bin/python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           .venv-minimum/bin/python -m pip install -e . --no-deps
           .venv-minimum/bin/python -m pip check
       - name: Exercise representative public APIs
-        run: .venv-minimum/bin/python -m pytest tests/test_keras/test_basic.py tests/test_keras/test_attention.py -q
+        run: .venv-minimum/bin/python -m pytest tests/test_keras/test_basic.py tests/test_keras/test_attention.py tests/test_keras/test_regression_convolution.py -q
 
   mlx:
     name: MLX 0.18.1 minimum smoke

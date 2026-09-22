@@ -187,8 +187,8 @@ pytest tests/test_torch/ -v
 pytest tests/conformance/ -v
 
 # A single file or test
-pytest tests/test_torch/test_nmn.py -v
-pytest tests/test_torch/test_nmn.py::TestYatNMN::test_forward -v
+pytest tests/test_torch/test_yat_nmn.py -v
+pytest tests/test_torch/test_yat_nmn.py -v
 
 # With coverage
 pytest tests/ --cov=nmn --cov-report=html

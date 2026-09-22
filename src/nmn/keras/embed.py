@@ -7,14 +7,15 @@ weight-sharing between embedding and output layers in language models.
 from __future__ import annotations
 
 import math
-from typing import Optional, Union
+from typing import Any, Optional, Union, cast
 
-from keras.src import initializers, ops
-from keras.src.layers.layer import Layer
-from keras.src.saving.object_registration import register_keras_serializable
+from keras import initializers, ops
+from keras.layers import Layer
+from keras.saving import register_keras_serializable
 
 from nmn._validation import validate_positive_int
 
+from ._types import Config, Shape, Tensor
 from ._yat_core import (
     reduction_safe_upcast,
     saturating_downcast,
@@ -51,12 +52,12 @@ class YatEmbed(Layer):
         features: int,
         use_alpha: bool = True,
         constant_alpha: Optional[Union[bool, float]] = None,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         spherical: bool = False,
         weight_normalized: bool = False,
-        embedding_initializer="glorot_normal",
-        **kwargs,
-    ):
+        embedding_initializer: Any = "glorot_normal",
+        **kwargs: Any,
+    ) -> None:
         num_embeddings = validate_positive_int(num_embeddings, "num_embeddings")
         features = validate_positive_int(features, "features")
         super().__init__(**kwargs)
@@ -77,7 +78,7 @@ class YatEmbed(Layer):
         self.use_alpha = use_alpha
         self.constant_alpha = constant_alpha
 
-    def build(self, input_shape=None):
+    def build(self, input_shape: Shape | None = None) -> None:
         self.embedding = self.add_weight(
             name="embedding",
             shape=(self.num_embeddings, self.features),
@@ -98,7 +99,7 @@ class YatEmbed(Layer):
 
         self.built = True
 
-    def call(self, inputs):
+    def call(self, inputs: Tensor) -> Tensor:
         """Standard embedding lookup.
 
         Args:
@@ -109,7 +110,7 @@ class YatEmbed(Layer):
         """
         return ops.take(self.embedding, inputs, axis=0)
 
-    def attend(self, query):
+    def attend(self, query: Tensor) -> Tensor:
         """Compute YAT similarity between query and all embeddings.
 
         Args:
@@ -153,10 +154,10 @@ class YatEmbed(Layer):
 
         return saturating_downcast(y, output_dtype)
 
-    def compute_output_shape(self, input_shape):
-        return input_shape + (self.features,)
+    def compute_output_shape(self, input_shape: Shape) -> Shape:
+        return tuple(input_shape) + (self.features,)
 
-    def get_config(self):
+    def get_config(self) -> Config:
         config = super().get_config()
         config.update(
             {
@@ -172,4 +173,4 @@ class YatEmbed(Layer):
                 ),
             }
         )
-        return config
+        return cast(Config, config)

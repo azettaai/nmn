@@ -1,5 +1,14 @@
 # Public mirror synchronization
 
+> **Historical configuration, retired September 2026.** On September 13,
+> `mlnomadpy/nmn` [became independently maintained](https://github.com/mlnomadpy/nmn/commit/f250026804ba131faa635c8d0f65cd0a49ef9e3f),
+> changed its license for future versions, and removed the mirror workflow.
+> It is no longer an active public mirror of `azettaai/nmn`. Do not install sync
+> credentials or overwrite that repository to make its refs equal this one.
+> The implementation below is retained as historical documentation; its
+> fast-forward guard must continue to refuse divergent repository history.
+
+
 The `mlnomadpy/nmn` mirror synchronizes from the public canonical history with
 the hourly and manually dispatched `Sync public mirror` workflow. The workflow
 fetches `azettaai/nmn` anonymously and can write only to the mirror.

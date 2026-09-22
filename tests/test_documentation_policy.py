@@ -24,7 +24,7 @@ def _minimum_version(extra: str, package: str) -> str:
         for item in OPTIONAL_DEPENDENCIES[extra]
         if re.match(rf"{re.escape(package)}(?:\[.*\])?>=", item, re.IGNORECASE)
     )
-    return requirement.split(">=", maxsplit=1)[1]
+    return requirement.split(">=", maxsplit=1)[1].split(",", maxsplit=1)[0]
 
 
 def test_nnx_readme_only_advertises_defined_project_extras():
@@ -44,8 +44,8 @@ def test_nnx_readme_only_advertises_defined_project_extras():
 
 def test_nnx_accelerator_commands_use_official_jax_extras():
     jax_minimum = _minimum_version("nnx", "jax")
-    assert f'"jax[tpu]>={jax_minimum}"' in NNX_README
-    assert f'"jax[cuda13]>={jax_minimum}"' in NNX_README
+    assert f'"jax[tpu]>={jax_minimum},<0.11.2"' in NNX_README
+    assert f'"jax[cuda13]>={jax_minimum},<0.11.2"' in NNX_README
     assert '".[tpu]"' not in NNX_README
     assert '".[gpu]"' not in NNX_README
 
@@ -83,3 +83,13 @@ def test_changelog_has_unreleased_and_descending_dated_releases():
 
     version_tuples = [tuple(map(int, version.split("."))) for version in versions]
     assert version_tuples == sorted(version_tuples, reverse=True)
+
+
+def test_issue_155_stale_forms_do_not_return():
+    page = (ROOT / "website/docusaurus/docs/layers/yat-nmn.md").read_text()
+    assert r"y = y \cdot \alpha" in page
+    assert r")^\alpha" not in page
+    assert "NNX-only advanced variants" not in (ROOT / "docs/README.md").read_text()
+    assert "nmn.nnx.nmn" not in (ROOT / "src/nmn/nnx/layers/nmn.py").read_text()
+    assert "tests/test_torch/test_nmn.py" not in (ROOT / "CONTRIBUTING.md").read_text()
+    assert "[examples/](examples/)" not in (ROOT / "EXAMPLES.md").read_text()

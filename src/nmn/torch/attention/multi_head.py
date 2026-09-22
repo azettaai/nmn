@@ -85,11 +85,11 @@ class MultiHeadYatAttention(nn.Module):
         normalize_qk: bool = False,
         spherical: bool = False,
         use_out_proj: bool = True,
-        epsilon: float = 1e-5,
-        device=None,
-        dtype=None,
-        param_dtype=None,
-    ):
+        epsilon: float = 1e-05,
+        device: torch.device | str | int | None = None,
+        dtype: torch.dtype | None = None,
+        param_dtype: torch.dtype | None = None,
+    ) -> None:
         embed_dim = validate_positive_int(embed_dim, "embed_dim")
         num_heads = validate_positive_int(num_heads, "num_heads")
         dropout = validate_rate(dropout, "dropout")

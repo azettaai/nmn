@@ -6,17 +6,16 @@ that use power-based normalization instead of exponentials.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
-from keras.src import ops
+from keras import ops
+
+from ._types import Config, Shape, Tensor
 
 
 def softermax(
-    x,
-    n: float = 1.0,
-    epsilon: float = 1e-12,
-    axis: Optional[int] = -1,
-):
+    x: Tensor, n: float = 1.0, epsilon: float = 1e-12, axis: Optional[int] = -1
+) -> Tensor:
     """Normalizes non-negative scores using the Softermax function.
 
     softermax_n(x_k) = x_k^n / (epsilon + sum_i x_i^n)
@@ -37,10 +36,7 @@ def softermax(
     return x_n / (epsilon + sum_x_n)
 
 
-def softer_sigmoid(
-    x,
-    n: float = 1.0,
-):
+def softer_sigmoid(x: Tensor, n: float = 1.0) -> Tensor:
     """Squashes non-negative scores into [0, 1) using soft-sigmoid.
 
     soft_sigmoid_n(x) = x^n / (1 + x^n)
@@ -58,10 +54,7 @@ def softer_sigmoid(
     return x_n / (1.0 + x_n)
 
 
-def soft_tanh(
-    x,
-    n: float = 1.0,
-):
+def soft_tanh(x: Tensor, n: float = 1.0) -> Tensor:
     """Maps non-negative scores to [-1, 1) using soft-tanh.
 
     soft_tanh_n(x) = (x^n - 1) / (1 + x^n)

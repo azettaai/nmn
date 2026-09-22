@@ -894,7 +894,7 @@ from nmn.mlx import softermax, softer_sigmoid, soft_tanh
 - Run `nmn` / `nmn guide <framework>` / `nmn features` to discover the API from the terminal
 - Check out the [README](README.md) for installation and core concepts
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines
-- Browse the [examples/](examples/) directory for complete training scripts
+- Browse the [PyTorch examples](src/nmn/torch/examples/) and [NNX examples](src/nmn/nnx/examples/) directory for complete training scripts
 - Run the tests: `pytest tests/ -v`
 
 ---

@@ -1,5 +1,12 @@
 # mypy: allow-untyped-defs
+"""Deprecated legacy convolution internals; use nmn.torch public layers.
+
+This module remains importable for downstream compatibility. Public NMN layers
+use layers/_yat_conv_core.py and do not depend on these historical classes.
+"""
+
 import math
+import warnings
 from collections.abc import Callable
 from typing import Optional, Union, cast
 
@@ -15,26 +22,11 @@ from torch.nn.modules.utils import _pair, _reverse_repeat_tuple, _single, _tripl
 from torch.nn.parameter import Parameter, UninitializedParameter
 from typing_extensions import deprecated
 
-__all__ = [
-    "Conv1d",
-    "Conv2d",
-    "Conv3d",
-    "ConvTranspose1d",
-    "ConvTranspose2d",
-    "ConvTranspose3d",
-    "LazyConv1d",
-    "LazyConv2d",
-    "LazyConv3d",
-    "LazyConvTranspose1d",
-    "LazyConvTranspose2d",
-    "LazyConvTranspose3d",
-    "YatConv1D",
-    "YatConv2D",
-    "YatConv3D",
-    "YatConvTranspose1D",
-    "YatConvTranspose2D",
-    "YatConvTranspose3D",
-]
+warnings.warn(
+    "nmn.torch.base is deprecated; import convolution layers from nmn.torch",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 convolution_notes = {
     "groups_note": r"""* :attr:`groups` controls the connections between inputs and outputs.

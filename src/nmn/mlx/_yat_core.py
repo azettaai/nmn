@@ -10,8 +10,6 @@ instance attributes the conv classes already expose.
 
 from __future__ import annotations
 
-from typing import cast
-
 import mlx.core as mx
 import mlx.nn as nn
 
@@ -69,4 +67,4 @@ def yat_score(
     elif layer.use_alpha and getattr(layer, "alpha", None) is not None:
         y = y * layer.alpha
 
-    return cast(mx.array, saturating_downcast(y, layer.dtype))
+    return saturating_downcast(y, layer.dtype)

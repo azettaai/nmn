@@ -46,11 +46,11 @@ dev = [
     "hatch-vcs>=0.3.0",
     "tomli>=1.1.0; python_version < '3.11'",
 ]
-nnx = ["jax>=0.9.1", "jaxlib>=0.9.1", "flax>=0.12.5"]
+nnx = ["jax>=0.9.1,<0.11.2", "jaxlib>=0.9.1,<0.11.2", "flax>=0.12.5"]
 torch = ["torch>=1.11.0"]
 keras = ["keras>=3.0.0"]
 tf = ["tensorflow>=2.10.0"]
-linen = ["jax>=0.9.1", "jaxlib>=0.9.1", "flax>=0.12.5"]
+linen = ["jax>=0.9.1,<0.11.2", "jaxlib>=0.9.1,<0.11.2", "flax>=0.12.5"]
 mlx = ["mlx>=0.18.1"]
 all = ["nmn[nnx,torch,keras,tf,linen]"]
 data = [
@@ -117,6 +117,11 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = ["--verbose", "--tb=short", "--strict-markers"]
 markers = [
+    "unit: dependency-light package and policy contract",
+    "backend: backend-native correctness, compatibility and serialization",
+    "conformance: oracle/fixture and cross-component contract",
+    "accelerator: real device execution (Metal/CUDA/TPU)",
+    "performance: opt-in timing measurements",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "benchmark: explicit performance measurements excluded from correctness CI",
 ]
@@ -173,3 +178,8 @@ packages = ["src/nmn"]
 # .git/info/exclude rather than the shared .gitignore, so declare the release
 # boundary explicitly instead of relying on developer-local Git state.
 exclude = ["/.dacli"]
+
+[[tool.mypy.overrides]]
+module = ["nmn._validation", "nmn._optional", "nmn.keras.squashers", "nmn.keras._types"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true

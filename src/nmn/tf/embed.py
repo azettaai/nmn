@@ -46,12 +46,12 @@ class YatEmbed(tf.Module):
         features: int,
         use_alpha: bool = True,
         constant_alpha: Optional[Union[bool, float]] = None,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         spherical: bool = False,
         weight_normalized: bool = False,
         dtype: tf.DType = tf.float32,
         name: Optional[str] = None,
-    ):
+    ) -> None:
         num_embeddings = validate_positive_int(num_embeddings, "num_embeddings")
         features = validate_positive_int(features, "features")
         super().__init__(name=name)

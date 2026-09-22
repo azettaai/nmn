@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from tests._isolated_backend import mlx_is_usable
+from tests.tolerances import LEGACY_REFERENCE
 
 _OPTIONAL_TEST_DEPENDENCIES = {
     "test_torch": ("torch",),
@@ -229,8 +230,8 @@ def yat_reference_conv2d(
 # Test Tolerances
 # ============================================================================
 
-ATOL = 1e-4  # Absolute tolerance for floating point comparisons
-RTOL = 1e-4  # Relative tolerance for floating point comparisons
+ATOL = LEGACY_REFERENCE["atol"]
+RTOL = LEGACY_REFERENCE["rtol"]
 
 
 # ============================================================================
@@ -309,3 +310,37 @@ def conv1d_test_data():
         "input_length": 16,
         "input": generate_batch_input_1d(2, 16, 3),
     }
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--require-backend",
+        action="append",
+        default=[],
+        help="Fail collection if this NMN backend cannot import (repeatable).",
+    )
+
+
+def pytest_sessionstart(session):
+    import importlib
+
+    for backend in session.config.getoption("--require-backend"):
+        if backend not in {"torch", "nnx", "linen", "tf", "keras", "mlx"}:
+            raise pytest.UsageError(f"Unknown required backend: {backend}")
+        if backend == "mlx" and not _mlx_backend_available():
+            raise pytest.UsageError("Required MLX/Metal runtime is unavailable")
+        try:
+            importlib.import_module(f"nmn.{backend}")
+        except ImportError as error:
+            raise pytest.UsageError(
+                f"Required backend {backend} failed to import: {error}"
+            ) from error
+
+
+def pytest_collection_modifyitems(config, items):
+    from pathlib import Path
+
+    from tests._tiers import tier_for
+
+    for item in items:
+        item.add_marker(getattr(pytest.mark, tier_for(Path(str(item.path)))))

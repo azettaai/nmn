@@ -17,7 +17,7 @@ $$
 With optional alpha scaling:
 
 $$
-y = y \cdot \left(\frac{\sqrt{\text{out\_features}}}{\log(1 + \text{out\_features})}\right)^\alpha
+y = y \cdot \alpha
 $$
 
 ## Import

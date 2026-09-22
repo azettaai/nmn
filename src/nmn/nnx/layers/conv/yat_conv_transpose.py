@@ -135,11 +135,11 @@ class YatConvTranspose(Module):
         alpha_init: Initializer = default_alpha_init,
         transpose_kernel: bool = False,
         promote_dtype: PromoteDtypeFn = dtypes.promote_dtype,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         drop_rate: float = 0.0,
         rngs: rnglib.Rngs,
-    ):
+    ) -> None:
         in_features = validate_positive_int(in_features, "in_features")
         out_features = validate_positive_int(out_features, "out_features")
         drop_rate = validate_rate(drop_rate, "drop_rate")

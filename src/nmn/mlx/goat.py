@@ -41,7 +41,7 @@ Mask convention matches the rest of ``nmn.mlx``: ``True`` = attend,
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, cast
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -124,7 +124,7 @@ def goat_yat_attention_weights(
     eligible = None
     if self_mask and denominator.shape[-2] == denominator.shape[-1]:
         n = denominator.shape[-1]
-        eligible = (mx.eye(n, dtype=compute_dtype) == 0)[None, None]
+        eligible = cast(mx.array, mx.eye(n, dtype=compute_dtype) == 0)[None, None]
     if mask is not None:
         mask = mask.astype(mx.bool_)
         eligible = mask if eligible is None else eligible & mask
@@ -145,7 +145,7 @@ def goat_yat_attention_weights(
     # The additive indicator preserves the documented zero result for a fully
     # masked row even when ``floor * row_scale`` underflows at the smallest
     # supported fp32 epsilon.  It is zero for every nonempty row.
-    empty_row = (row_sum == 0).astype(scores.dtype)
+    empty_row = cast(mx.array, row_sum == 0).astype(scores.dtype)
     return scores / (row_sum + floor * row_scale + empty_row)
 
 
@@ -195,7 +195,7 @@ class GoatYatAttention(nn.Module):
         use_bias: bool = False,
         epsilon: float = 1.0,
         dtype: mx.Dtype = mx.float32,
-    ):
+    ) -> None:
         embed_dim = validate_positive_int(embed_dim, "embed_dim")
         num_heads = validate_positive_int(num_heads, "num_heads")
         super().__init__()

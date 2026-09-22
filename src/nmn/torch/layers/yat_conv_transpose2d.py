@@ -57,12 +57,12 @@ class YatConvTranspose2D(ConvTranspose2d):
         constant_alpha: Optional[Union[bool, float]] = None,
         use_dropconnect: bool = False,
         mask: Optional[Tensor] = None,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         drop_rate: float = 0.0,
-        device=None,
-        dtype=None,
-        param_dtype=None,
+        device: torch.device | str | int | None = None,
+        dtype: torch.dtype | None = None,
+        param_dtype: torch.dtype | None = None,
     ) -> None:
         in_channels = validate_positive_int(in_channels, "in_channels")
         out_channels = validate_positive_int(out_channels, "out_channels")

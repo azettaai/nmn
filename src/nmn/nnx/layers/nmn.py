@@ -65,7 +65,7 @@ class YatNMN(Module):
     Example usage::
 
       >>> from flax import nnx
-      >>> from nmn.nnx.nmn import YatNMN
+      >>> from nmn.nnx import YatNMN
       >>> import jax.numpy as jnp
 
       >>> # Learnable alpha (default)
@@ -168,7 +168,7 @@ class YatNMN(Module):
         alpha_init: Initializer = default_alpha_init,
         dot_general: DotGeneralT = lax.dot_general,
         promote_dtype: PromoteDtypeFn = dtypes.promote_dtype,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         spherical: bool = False,
         drop_rate: float = 0.0,
@@ -180,8 +180,7 @@ class YatNMN(Module):
         lazy: bool = False,
         freeze_kernel: tp.Optional[bool] = None,
         rngs: rnglib.Rngs,
-    ):
-
+    ) -> None:
         in_features = validate_positive_int(in_features, "in_features")
         out_features = validate_positive_int(out_features, "out_features")
         drop_rate = validate_rate(drop_rate, "drop_rate")

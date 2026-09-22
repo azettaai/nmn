@@ -101,13 +101,13 @@ class Embed(Module):
         promote_dtype: PromoteDtypeFn = dtypes.promote_dtype,
         use_alpha: bool = True,
         constant_alpha: tp.Optional[tp.Union[bool, float]] = None,
-        epsilon: float = 1e-5,
+        epsilon: float = 1e-05,
         learnable_epsilon: bool = False,
         spherical: bool = False,
         weight_normalized: bool = False,
         alpha_init: Initializer = default_alpha_init,
         rngs: rnglib.Rngs,
-    ):
+    ) -> None:
         num_embeddings = validate_positive_int(num_embeddings, "num_embeddings")
         features = validate_positive_int(features, "features")
         self.embedding = nnx.Param(

@@ -130,3 +130,28 @@ def test_missing_dependency_error_preserves_module_name(monkeypatch) -> None:
 
     assert caught.value.name == "example_framework"
     assert 'pip install "nmn[example]"' in str(caught.value)
+
+
+def test_backend_modules_do_not_eagerly_import_unrelated_frameworks():
+    frameworks = {"torch", "jax", "flax", "tensorflow", "keras", "mlx"}
+    allowed = {
+        "torch": {"torch"},
+        "nnx": {"jax", "flax"},
+        "linen": {"jax", "flax"},
+        "tf": {"tensorflow"},
+        "keras": {"keras"},
+        "mlx": {"mlx"},
+    }
+    for backend, dependencies in allowed.items():
+        for path in (SOURCE / "nmn" / backend).rglob("*.py"):
+            if "examples" in path.parts:
+                continue
+            for node in ast.parse(path.read_text()).body:
+                roots = []
+                if isinstance(node, ast.Import):
+                    roots = [alias.name.split(".")[0] for alias in node.names]
+                elif (
+                    isinstance(node, ast.ImportFrom) and not node.level and node.module
+                ):
+                    roots = [node.module.split(".")[0]]
+                assert not (set(roots) & (frameworks - dependencies)), path

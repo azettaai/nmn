@@ -42,8 +42,8 @@ jobs:
     - name: Collect without optional ML frameworks
       run: pytest --collect-only -q
 
-    - name: Run import-light CLI tests
-      run: pytest tests/test_cli.py -q
+    - name: Run dependency-light unit and policy contracts
+      run: pytest -m unit -q
 
   test-jax:
     name: Test JAX/Flax (${{ matrix.dependencies }}, py${{ matrix.python-version }})
@@ -93,13 +93,13 @@ jobs:
     - name: Run minimum-version JAX tests with coverage
       if: matrix.dependencies == 'minimum'
       run: |
-        pytest tests/test_nnx/ tests/test_linen/ tests/integration/ -v -m "not slow" --cov=nmn --cov-report=xml
+        pytest --require-backend nnx --require-backend linen tests/test_nnx/ tests/test_linen/ tests/test_documentation_examples.py tests/integration/ -v -m "not slow" --cov=nmn --cov-report=xml
       env:
         JAX_PLATFORM_NAME: cpu
 
     - name: Run latest-version JAX backend tests
       if: matrix.dependencies == 'latest'
-      run: pytest tests/test_nnx/ tests/test_linen/ -v -m "not slow"
+      run: pytest --require-backend nnx --require-backend linen tests/test_nnx/ tests/test_linen/ tests/test_documentation_examples.py -v -m "not slow"
       env:
         JAX_PLATFORM_NAME: cpu
 
@@ -183,7 +183,7 @@ jobs:
         pip check
 
     - name: Run PyTorch tests
-      run: pytest tests/test_torch/ -v --cov=nmn --cov-report=xml
+      run: pytest --require-backend torch tests/test_torch/ tests/test_documentation_examples.py -v --cov=nmn --cov-report=xml
 
     - name: Stage PyTorch coverage data
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
@@ -260,7 +260,7 @@ jobs:
 
     - name: Run Keras/TF tests
       run: |
-        pytest tests/test_keras/ tests/test_tf/ -v --cov=nmn --cov-report=xml
+        pytest --require-backend keras --require-backend tf tests/test_keras/ tests/test_tf/ tests/test_documentation_examples.py -v --cov=nmn --cov-report=xml
 
     - name: Stage Keras/TF coverage data
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
@@ -389,7 +389,7 @@ jobs:
         python -c "import keras; import nmn.keras; assert keras.backend.backend() == '${{ matrix.backend }}'"
 
     - name: Run Keras backend suite
-      run: pytest tests/test_keras/ -v --cov=nmn --cov-report=xml
+      run: pytest --require-backend keras tests/test_keras/ -v --cov=nmn --cov-report=xml
 
   conformance-linux:
     name: Cross-framework conformance (Linux)
@@ -509,7 +509,7 @@ jobs:
         conv_transpose_same_multidim_forward_and_gradient_parity"
 
     - name: Run full MLX suite
-      run: pytest tests/test_mlx/ -v --cov=nmn --cov-report=xml
+      run: pytest --require-backend mlx tests/test_mlx/ -v --cov=nmn --cov-report=xml
 
     - name: Compare MLX with the canonical serialized fixture
       run: pytest tests/conformance -v
@@ -544,6 +544,12 @@ jobs:
     - name: Install lint tools
       run: |
         pip install "flake8==7.3.0" "black==26.5.1" "isort==9.0.1"
+
+    - name: Prevent convolution complexity growth
+      run: python scripts/check_complexity.py
+
+    - name: Check generated API documentation
+      run: python scripts/generate_api_docs.py --check
 
     - name: Lint with flake8 (errors only — fails build)
       run: |
@@ -581,3 +587,8 @@ jobs:
 
     - name: Run MyPy on the configured package surface
       run: mypy --no-error-summary
+
+    - name: Validate installed wheel consumer types
+      run: |
+        python -m build --wheel --outdir /tmp/nmn-typing-dist
+        python scripts/check_wheel_typing.py /tmp/nmn-typing-dist/*.whl

@@ -17,7 +17,7 @@ def help() -> None:
     print(cli._render_info())
 
 
-def doctor():
+def doctor() -> dict[str, str | None]:
     """Print the ``nmn doctor`` report and return ``{framework: version_or_None}``.
 
     Import-light: ``nmn.cli`` is imported lazily.

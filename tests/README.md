@@ -1,5 +1,21 @@
 # Test suite organization
 
+Every collected test has exactly one tier marker assigned by `tests/_tiers.py`:
+
+| Marker | Ownership | Command |
+| --- | --- | --- |
+| `unit` | Root dependency-light tests | `python -m pytest -m unit` |
+| `backend` | Native framework behavior and serialization | `python -m pytest -m backend --require-backend torch` |
+| `conformance` | NumPy oracle, canonical fixtures, integration contracts | `python -m pytest -m conformance` |
+| `accelerator` | MLX Metal and explicit device test directories | `python -m pytest -m accelerator --require-backend mlx` |
+| `performance` | Explicit benchmark programs | `make benchmark-attention` |
+
+Use `python -m pytest -m unit` for the fast local loop. The complete available
+matrix is `python -m pytest`; optional frameworks may skip locally. CI passes
+`--require-backend` so missing installations cannot make a required job green.
+Conformance CI separately requires the manifest's complete platform backend set.
+Native TPU/CUDA checks remain external gates, not claimed by CPU interpret runs.
+
 The suite is organized by the boundary it verifies:
 
 - `test_<backend>/` — backend-specific unit and regression tests;
@@ -74,3 +90,18 @@ Continuous accelerator coverage is intentionally explicit:
   checks in CPU interpret mode;
 - native TPU Mosaic and CUDA execution remain external validation gates and
   are not represented as continuously tested in compatibility claims.
+
+## Numerical tolerances and regression ownership
+
+`tests/tolerances.py` is the shared dtype/device/operation lookup. Conformance
+bounds come directly from `src/nmn/conformance_manifest.json`; the lookup does
+not imply that every device is tested. Legacy reference defaults are named
+separately. Precision stress tests retain explicit local bounds for their
+specific overflow, collision, and gradient properties. Those bounds must not
+be quoted as general cross-framework tolerance claims.
+
+Torch and Keras issue regressions now live in `test_regression_*.py` grouped by
+attention, convolution, kernel banks, precision, and serialization/device behavior.
+The original test names are retained and checked against a migration inventory.
+Common runners and conversions live in `_regression_support.py`; canonical
+cross-framework adapters live only in `tests/conformance/adapters/`.

@@ -28,6 +28,8 @@ _ALL_JOB_FILES = {
     "tests/__init__.py",
     "tests/_isolated_backend.py",
     "tests/conftest.py",
+    "tests/_tiers.py",
+    "tests/tolerances.py",
 }
 _ALL_JOB_PREFIXES = ("src/nmn/_", "tests/integration/")
 

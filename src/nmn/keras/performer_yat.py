@@ -70,7 +70,9 @@ import math
 from typing import Any, Dict, Optional, cast
 
 import numpy as np
-from keras.src import ops
+from keras import ops
+
+from ._types import Config, Shape, Tensor
 
 __all__ = [
     "maclaurin_coeffs",
@@ -118,7 +120,7 @@ def create_maclaurin_projection(
     head_dim: int,
     num_features: int = 256,
     bias: float = 1.0,
-    epsilon: float = 1e-5,
+    epsilon: float = 1e-05,
     nmax: int = 40,
     seed: Optional[int] = None,
     dtype: str = "float32",
@@ -162,11 +164,8 @@ def create_maclaurin_projection(
 
 
 def maclaurin_features(
-    x,
-    params: Dict[str, Any],
-    normalize: bool = True,
-    epsilon: float = 1e-6,
-):
+    x: Tensor, params: Dict[str, Any], normalize: bool = True, epsilon: float = 1e-06
+) -> Tensor:
     """Compute MAY features ``phi(x) in R^M`` for every ``(..., d)`` token.
 
     Faithful to the verified NumPy reference::
@@ -222,7 +221,7 @@ def create_radial_projection(
     num_radial: int = 8,
     radial_dim: int = 64,
     bias: float = 1.0,
-    epsilon: float = 1e-5,
+    epsilon: float = 1e-05,
     seed: Optional[int] = None,
     dtype: str = "float32",
 ) -> Dict[str, Any]:
@@ -281,11 +280,8 @@ def create_radial_projection(
 
 
 def radial_features(
-    x,
-    params: Dict[str, Any],
-    normalize: bool = True,
-    epsilon: float = 1e-6,
-):
+    x: Tensor, params: Dict[str, Any], normalize: bool = True, epsilon: float = 1e-06
+) -> Tensor:
     """Compute RAY features ``phi(x)`` for every ``(..., d)`` token.
 
     Faithful to the verified NumPy reference: augment ``z = [x̂, sqrt(b)]``,
@@ -380,14 +376,14 @@ def _linear_attention(q_feat, k_feat, value, causal: bool, epsilon: float):
 
 
 def maclaurin_yat_attention(
-    query,
-    key,
-    value,
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
     params: Dict[str, Any],
     causal: bool = False,
-    epsilon: float = 1e-9,
+    epsilon: float = 1e-09,
     normalize: bool = True,
-):
+) -> Tensor:
     """Linear-complexity spherical YAT attention via MAY features.
 
     Args:
@@ -409,14 +405,14 @@ def maclaurin_yat_attention(
 
 
 def radial_yat_attention(
-    query,
-    key,
-    value,
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
     params: Dict[str, Any],
     causal: bool = False,
-    epsilon: float = 1e-9,
+    epsilon: float = 1e-09,
     normalize: bool = True,
-):
+) -> Tensor:
     """Linear-complexity spherical YAT attention via RAY features.
 
     Same signature as :func:`maclaurin_yat_attention`, using radial features.

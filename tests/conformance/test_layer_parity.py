@@ -18,9 +18,10 @@ from tests.conformance.oracle import (
     yat_embedding,
     yat_embedding_attend,
 )
+from tests.tolerances import tolerance
 
 CONTRACT = load_contract()
-TOLERANCE = CONTRACT["tolerances"]["float32"]
+TOLERANCE = tolerance("float32", "convolution")
 
 
 def _cases(operation):
